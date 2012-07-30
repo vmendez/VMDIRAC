@@ -169,7 +169,8 @@ class OcciClient:
       tempXML.write('                <DNS1>' + occiDNS1 + '</DNS1>\n')
       tempXML.write('                <DNS2>' + occiDNS2 + '</DNS2>\n')
       tempXML.write('                <CVMFS_HTTP_PROXY>' + CVMFS_HTTP_PROXY + '</CVMFS_HTTP_PROXY>\n')
-      tempXML.write('                <FILES>' + occiURLcontextfiles + '</FILES>\n')
+      if not URLcontextfiles == 'nofiles':
+          tempXML.write('                <FILES>' + occiURLcontextfiles + '</FILES>\n')
       tempXML.write('        </CONTEXT>\n')
       tempXML.write('</COMPUTE>\n')
       

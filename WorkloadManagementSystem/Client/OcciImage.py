@@ -133,7 +133,7 @@ class OcciImage:
     # URL context files:
     self.__URLcontextfiles = self.__getCSImageOption( "URLcontextfiles" )
     if not self.__URLcontextfiles:
-    	self.__URLcontextfiles = "http://lhcweb.pic.es/vmendez/context/root.pub"
+    	self.__URLcontextfiles = "nofiles"
 
     # Network id
     self.__NetId = self.__getCSCloudEndpointOption( "NetId" )
