@@ -45,6 +45,7 @@ class VirtualMachineDB( DB ):
   validImageStates    = [ 'New', 'Validated', 'Error' ]
   validInstanceStates = [ 'New', 'Submitted', 'Wait_ssh_context', 'Contextualizing', 
                           'Running', 'Stopping', 'Halted', 'Stalled', 'Error' ]
+  validRunningPodStates    = [ 'Active', 'Inactive' ]
 
   # In seconds !
   stallingInterval = 30 * 60 
@@ -112,6 +113,23 @@ class VirtualMachineDB( DB ):
                                }
 
 
+  tablesDesc[ 'vm_RunningPod' ] = { 'Fields' : { 'RunningPodID' : 'BIGINT UNSIGNED AUTO_INCREMENT NOT NULL',
+                                              'RunningPodName' : 'VARCHAR(32) NOT NULL',
+                                              'CampaignVcpuHoursCredit' : 'FLOAT NOT NULL',
+                                              'UsedVcpuHours' : 'FLOAT NOT NULL',
+                                              'CampaignStartDate' : 'DATETIME',
+                                              'CampaignEndDate' : 'DATETIME'
+                                              'Status' : 'VARCHAR(32) NOT NULL',
+                                            },
+                                   'PrimaryKey' : 'RunningPodID',
+                                   'Indexes': { 'RunningPod': [ 'RunningPodName', 'Status' ]
+                                          }
+                               }
+
+  #######################
+  # VirtualDB constructor
+  #######################
+
   def __init__( self, maxQueueSize = 10 ):
     
     DB.__init__( self, 'VirtualMachineDB', 'WorkloadManagement/VirtualMachineDB', maxQueueSize )
@@ -122,40 +140,67 @@ class VirtualMachineDB( DB ):
     if not result[ 'OK' ]:
       raise Exception( 'Can\'t create tables: %s' % result[ 'Message' ] )
 
-  def __initializeDB( self ):
-    """
-    Create the tables
-    """
-    tables = self._query( "show tables" )
-    if not tables[ 'OK' ]:
-      return tables
+  #######################
+  # Public functions
+  #######################
 
-    tablesInDB = [ table[0] for table in tables[ 'Value' ] ]
-    
-    tablesToCreate = {}
-    for tableName in self.tablesDesc:
-      if not tableName in tablesInDB:
-        tablesToCreate[ tableName ] = self.tablesDesc[ tableName ]
-
-    return self._createTables( tablesToCreate )
-
-  def __getTypeTuple( self, element ):
+  def setRunningPodStatus( self, runningPodName ):
+    """ 
+    Set Status of a given runningPod depending in date interval
+    returns:
+      S_OK(Status) if Status is valid and not Error 
+      S_ERROR(ErrorMessage) otherwise
     """
-    return tuple of (tableName, validStates, idName) for object
-    """
-    # defaults
-    tableName, validStates, idName = '', [], ''
-        
-    if element == 'Image':
-      tableName   = 'vm_Images'
-      validStates = self.validImageStates
-      idName      = 'VMImageID'
-    elif element == 'Instance':
-      tableName   = 'vm_Instances'
-      validStates = self.validInstanceStates
-      idName      = 'InstanceID'
+    tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
+   
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    if not runningPodID[ 'OK' ]:
+      return runningPodID
+    runningPodID = runningPodID[ 'Value' ]
 
-    return ( tableName, validStates, idName )
+    if len( runningPodID ) < 1:
+      return S_ERROR( 'Running pod %s not found in DB' % runningPodName )
+
+    # The runningPod exits in DB set status
+
+    runningPodDict = self.getRunningPodDict( runningPodName )
+    if not runningPodDict[ 'OK' ]:
+      return runningPodDict
+
+    runningPodDict = runningPodDict[ 'Value' ]
+    runningPodGovernaceDict = runningPodDict[ 'Governance' ]
+    startdate=Time.fromString(runningPodGovernanceDict['campaignStartDate'])
+    enddate=Time.fromString(runningPodGovernanceDict['campaignEndDate'])
+    currentdate=Time.date()
+    if dcurrent<startdate:
+      runningPodState='unactive'
+    elfi dcurrent>enddate:
+      runningPodState='unactive'
+    else:
+      runningPodState='active'
+
+    return self.__setState( 'RunningPod', runningPodID, runningPodState )
+
+  def getRunningPodStatus( self, runningPodName):
+    """ 
+    Check Status of a given runningPod
+    returns:
+      S_OK(Status) if Status is valid and not Error 
+      S_ERROR(ErrorMessage) otherwise
+    """
+    tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
+   
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    if not runningPodID[ 'OK' ]:
+      return runningPodID
+    runningPodID = runningPodID[ 'Value' ]
+
+    if len( runningPodID ) < 1:
+      return S_ERROR( 'Running pod %s not found in DB' % runningPodName )
+
+    # The runningPod exits in DB set status
+
+    return self.__getStatus( 'RunningPod', runningPodID )
 
   def checkImageStatus( self, imageName, runningPodName = "" ):
     """ 
@@ -583,6 +628,410 @@ class VirtualMachineDB( DB ):
     
     return S_OK( { 'Image' : imgData, 'Instance' : instData } )
 
+  def getRunningPodDict( self, runningPodName ):
+    """
+    Return from CS a Dictionary with RunningPod definition
+    """
+    #FIXME: should we have this public function in VirtualDB ? isn't it a better module ?
+    #FIXME: isn't checking for Image
+    
+    runningPodsCSPath = '/Resources/VirtualMachines/RunningPods'
+    
+    definedRunningPods = gConfig.getSections( runningPodsCSPath )
+    if not definedRunningPods[ 'OK' ]:
+      return definedRunningPods
+
+    if runningPodName not in definedRunningPods['Value']:
+      return S_ERROR( 'RunningPod "%s" not defined' % runningPodName )
+
+    runningPodCSPath = '%s/%s' % ( runningPodsCSPath, runningPodName )
+
+    runningPodDict = {}
+
+    cloudEndpoints = gConfig.getValue( '%s/CloudEndpoints' % runningPodCSPath , '' )
+    if not cloudEndpoints:
+      return S_ERROR( 'Missing CloudEndpoints for RunnningPod "%s"' % runningPodName )
+    
+    for option, value in gConfig.getOptionsDict( runningPodCSPath )['Value'].items():
+      runningPodDict[option] = value
+      
+    runningPodRequirementsDict = gConfig.getOptionsDict( '%s/Requirements' % runningPodCSPath )
+    if not runningPodRequirementsDict[ 'OK' ]:
+      return S_ERROR( 'Missing Requirements for RunningPod "%s"' % runningPodName )
+    if not ('CPUTime' in runningPodRequirementsDict[ 'Value' ]):
+      return S_ERROR( 'Missing Requirements/CPUTime in RunnningPod "%s"' % runningPodName )
+    runningPodRequirementsDict['Value']['CPUTime'] = int( runningPodRequirementsDict['Value']['CPUTime'] )
+    runningPodDict['Requirements'] = runningPodRequirementsDict['Value']
+
+    runningPodGovernanceDict = gConfig.getOptionsDict( '%s/Governance' % runningPodCSPath )
+    if not runningPodGovernanceDict[ 'OK' ]:
+      return S_ERROR( 'Missing Governance for RunningPod "%s"' % runningPodName )
+    if not ('CPUPerInstance' in runningPodGovernanceDict[ 'Value' ]):
+      return S_ERROR( 'Missing Governance/CPUPerInstance in RunnningPod "%s"' % runningPodName )
+    if not ('campaignVcpuHoursCredit' in runningPodGovernanceDict[ 'Value' ]):
+      return S_ERROR( 'Missing Governance/campaignVcpuHoursCredit in RunnningPod "%s"' % runningPodName )
+    if not ('campaignStartDate' in runningPodGovernanceDict[ 'Value' ]):
+      return S_ERROR( 'Missing Governance/campaignStartDate in RunnningPod "%s"' % runningPodName )
+    if not ('campaignEndDate' in runningPodGovernanceDict[ 'Value' ]):
+      return S_ERROR( 'Missing Governance/campaignEndDate in RunnningPod "%s"' % runningPodName )
+
+    runningPodDict['Governance'] = runningPodGovernanceDict['Value']
+
+    return S_OK( runningPodDict )
+
+  def insertRunningPod( self, runningPodName ):
+    """
+    Insert a RunningPod record, for governance purposes.
+    If RunningPod name already exists then do nothing
+    """
+    tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
+    
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    if not runningPodID[ 'OK' ]:
+      return runningPodID
+    runningPodID = runningPodID[ 'Value' ]
+
+    if len( runningPodID ) > 0:
+      return S_ERROR( 'RunningPod name "%s" is not unique' % runningPodName )
+
+    # The runningPod does not exits in DB, has to be inserted
+
+    runningPodDict = self.getRunningPodDict( runningPodName )
+    if not runningPodDict[ 'OK' ]:
+      return runningPodDict
+    runningPodDict = runningPodDict[ 'Value' ]
+
+    runningPodGovernanceDict = runningPodDict['Governance']
+
+    fields = [ 'RunningPodName', 'CampaignVcpuHoursCredit', 'CampaignStartDate', 'CampaignEndDate']
+    values = [ runningPodName, runningPodGovernanceDict['campaignVcpuHoursCredit'], runningPodGovernanceDict['campaignStartDate'], runningPodGovernanceDict['campaignEndDate']]
+
+    # Status and UsedCpuHours fields are set and get from VMScheduler dynamically.
+
+    return self._insert( tableName , fields, values )
+
+
+  #############################
+  #Monitoring Public Functions
+  #############################
+
+  def getInstancesContent( self, selDict, sortList, start = 0, limit = 0 ):
+    """
+    Function to get the contents of the db
+      parameters are a filter to the db
+    """
+    #Main fields
+    tables = ( "`vm_Images` AS img", "`vm_Instances` AS inst" )
+    imageFields = ( 'VMImageID', 'Name', 'CloudEndpoints' )
+    instanceFields = ( 'RunningPod', 'InstanceID', 'Name', 'UniqueID', 'VMImageID',
+                       'Status', 'PublicIP', 'Status', 'ErrorMessage', 'LastUpdate', 'Load', 'Uptime', 'Jobs' )
+
+    fields = [ 'img.%s' % f for f in imageFields ] + [ 'inst.%s' % f for f in instanceFields ]
+    sqlQuery = "SELECT %s FROM %s" % ( ", ".join( fields ), ", ".join( tables ) )
+    sqlCond = [ 'img.VMImageID = inst.VMImageID' ]
+    for field in selDict:
+      if field in instanceFields:
+        sqlField = "inst.%s" % field
+      elif field in imageFields:
+        sqlField = "img.%s" % field
+      elif field in fields:
+        sqlField = field
+      else:
+        continue
+      value = selDict[ field ]
+      if type( value ) in ( types.StringType, types.UnicodeType ):
+        value = [ str( value ) ]
+      sqlCond.append( " OR ".join( [ "%s=%s" % ( sqlField, self._escapeString( str( value ) )[ 'Value' ] ) for value in selDict[field] ] ) )
+    sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
+    if sortList:
+      sqlSortList = []
+      for sorting in sortList:
+        if sorting[0] in instanceFields:
+          sqlField = "inst.%s" % sorting[0]
+        elif sorting[0] in imageFields:
+          sqlField = "img.%s" % sorting[0]
+        elif sorting[0] in fields:
+          sqlField = sorting[0]
+        else:
+          continue
+        direction = sorting[1].upper()
+        if direction not in ( "ASC", "DESC" ):
+          continue
+        sqlSortList.append( "%s %s" % ( sqlField, direction ) )
+      if sqlSortList:
+        sqlQuery += " ORDER BY %s" % ", ".join( sqlSortList )
+    if limit:
+      sqlQuery += " LIMIT %d,%d" % ( start, limit )
+    retVal = self._query( sqlQuery )
+    if not retVal[ 'OK' ]:
+      return retVal
+    data = []
+    #Total records
+    for record in retVal[ 'Value' ]:
+      record = list( record )
+      data.append( record )
+    totalRecords = len( data )
+    sqlQuery = "SELECT COUNT( InstanceID ) FROM %s WHERE %s" % ( ", ".join( tables ),
+                                                                   " AND ".join( sqlCond ) )
+    retVal = self._query( sqlQuery )
+    if retVal[ 'OK' ]:
+      totalRecords = retVal[ 'Value' ][0][0]
+    #return
+    return S_OK( { 'ParameterNames' : fields,
+                         'Records' : data,
+                         'TotalRecords' : totalRecords } )
+
+  def getHistoryForInstanceID( self, instanceId ):
+    try:
+      instanceId = int( instanceId )
+    except ValueError:
+      return S_ERROR( "Instance Id has to be a number!" )
+    
+    fields    = ( 'Status', 'Load', 'Update', 'Jobs', 'TransferredFiles', 'TransferredBytes' )
+    sqlFields = [ '`%s`' % f for f in fields ]
+    
+    sqlQuery = "SELECT %s FROM `vm_History` WHERE InstanceId=%d" % ( ", ".join( sqlFields ), instanceId )
+    retVal = self._query( sqlQuery )
+    if not retVal[ 'OK' ]:
+      return retVal
+    return S_OK( { 'ParameterNames' : fields, 'Records' : retVal[ 'Value' ] } )
+
+  def getInstanceCounters( self, groupField = "Status", selDict = {} ):
+    validFields = VirtualMachineDB.tablesDesc[ 'vm_Instances' ][ 'Fields' ]
+    if groupField not in validFields:
+      return S_ERROR( "%s is not a valid field" % groupField )
+    sqlCond = []
+    for field in selDict:
+      if field not in validFields:
+        return S_ERROR( "%s is not a valid field" % field )
+      value = selDict[ field ]
+      if type( value ) not in ( types.DictType, types.TupleType ):
+        value = ( value, )
+      value = [ self._escapeString( str( v ) )[ 'Value' ] for v in value ]
+      sqlCond.append( "`%s` in (%s)" % ( field, ", ".join( value ) ) )
+    sqlQuery = "SELECT `%s`, COUNT( `%s` ) FROM `vm_Instances`" % ( groupField, groupField )
+    
+    if sqlCond:
+      sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
+    sqlQuery += " GROUP BY `%s`" % groupField
+    
+    result = self._query( sqlQuery )
+    if not result[ 'OK' ]:
+      return result
+    return S_OK( dict( result[ 'Value' ] ) )
+
+  def getHistoryValues( self, averageBucket, selDict = {}, fields2Get = False, timespan = 0 ):
+    try:
+      timespan = max( 0, int( timespan ) )
+    except ValueError:
+      return S_ERROR( "Timespan has to be an integer" )
+
+    cumulativeFields = [ 'Jobs', 'TransferredFiles', 'TransferredBytes' ]
+    validDataFields  = [ 'Load', 'Jobs', 'TransferredFiles', 'TransferredBytes' ]
+    allValidFields   = VirtualMachineDB.tablesDesc[ 'vm_History' ][ 'Fields' ]
+    
+    if not fields2Get:
+      fields2Get = list( validDataFields )
+    for field in fields2Get:
+      if field not in validDataFields:
+        return S_ERROR( "%s is not a valid data field" % field )
+
+    #paramFields = fields2Get
+    try:
+      bucketSize = int( averageBucket )
+    except ValueError:
+      return S_ERROR( "Average bucket has to be an integer" )
+    
+    sqlGroup = "FROM_UNIXTIME(UNIX_TIMESTAMP( `Update` ) - UNIX_TIMESTAMP( `Update` ) mod %d)" % bucketSize
+    sqlFields = [ '`InstanceID`', sqlGroup ] #+ [ "SUM(`%s`)/COUNT(`%s`)" % ( f, f ) for f in fields2Get ]
+    for field in fields2Get:
+      if field in cumulativeFields:
+        sqlFields.append( "MAX(`%s`)" % field )
+      else:
+        sqlFields.append( "SUM(`%s`)/COUNT(`%s`)" % ( field, field ) )
+
+    sqlGroup    = "%s, InstanceID" % sqlGroup
+    paramFields = [ 'Update' ] + fields2Get
+    sqlCond     = []
+    
+    for field in selDict:
+      if field not in allValidFields:
+        return S_ERROR( "%s is not a valid field" % field )
+      value = selDict[ field ]
+      if type( value ) not in ( types.ListType, types.TupleType ):
+        value = ( value, )
+      value = [ self._escapeString( str( v ) )[ 'Value' ] for v in value ]
+      sqlCond.append( "`%s` in (%s)" % ( field, ", ".join( value ) ) )
+    if timespan > 0:
+      sqlCond.append( "TIMESTAMPDIFF( SECOND, `Update`, UTC_TIMESTAMP() ) < %d" % timespan )
+    sqlQuery = "SELECT %s FROM `vm_History`" % ", ".join( sqlFields )
+    if sqlCond:
+      sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
+    sqlQuery += " GROUP BY %s ORDER BY `Update` ASC" % sqlGroup
+    result = self._query( sqlQuery )
+    if not result[ 'OK' ]:
+      return result
+    dbData = result[ 'Value' ]
+    #Need ext?
+    requireExtension = set()
+    for i in range( len( fields2Get ) ):
+      f = fields2Get[i]
+      if f in cumulativeFields:
+        requireExtension.add( i )
+
+    if requireExtension:
+      rDates = []
+      for row in dbData:
+        if row[1] not in rDates:
+          rDates.append( row[1] )
+      vmData = {}
+      for row in dbData:
+        vmID = row[0]
+        if vmID not in vmData:
+          vmData[ vmID ] = {}
+        vmData[ vmID ][ row[1] ] = row[2:]
+      rDates.sort()
+
+      dbData = []
+      for vmID in vmData:
+        prevValues = False
+        for rDate in rDates:
+          if rDate not in vmData[ vmID ]:
+            if prevValues:
+              instValues = [ rDate ]
+              for i in range( len( prevValues ) ):
+                instValues.append( prevValues[ i ] )
+              dbData.append( instValues )
+          else:
+            row = vmData[ vmID ][ rDate ]
+            prevValues = []
+            for i in range( len ( row ) ):
+              if i in requireExtension:
+                prevValues.append( row[i] )
+              else:
+                prevValues.append( 0 )
+
+            instValues = [ rDate ]
+            for i in range( len( row ) ):
+              instValues.append( row[ i ] )
+            dbData.append( instValues )
+    else:
+      #If we don't require extension just strip vmName
+      dbData = [ row[1:] for row in dbData ]
+
+    #Final sum
+    sumData = {}
+    for record in dbData:
+      recDate = record[0]
+      rawData = record[1:]
+      if recDate not in sumData:
+        sumData[ recDate ] = [ 0.0 for f in rawData ]
+      for i in range( len( rawData ) ):
+        sumData[ recDate ][i] += float( rawData[i] )
+    finalData = []
+    if len( sumData ) > 0:
+      firstValues = sumData[ sorted( sumData )[0] ]
+      for date in sorted( sumData ):
+        finalData.append( [ date ] )
+        values = sumData[ date ]
+        for i in range( len( values ) ):
+          if i in requireExtension:
+            finalData[-1].append( max( 0, values[i] - firstValues[i] ) )
+          else:
+            finalData[-1].append( values[i] )
+
+    return S_OK( { 'ParameterNames' : paramFields,
+                         'Records' : finalData } )
+
+  def getRunningInstancesHistory( self, timespan = 0, bucketSize = 900 ):
+    
+    try:
+      bucketSize = max( 300, int( bucketSize ) )
+    except ValueError:
+      return S_ERROR( "Bucket has to be an integer" )
+    
+    try:
+      timespan = max( 0, int( timespan ) )
+    except ValueError:
+      return S_ERROR( "Timespan has to be an integer" )
+
+    groupby   = "FROM_UNIXTIME(UNIX_TIMESTAMP( `Update` ) - UNIX_TIMESTAMP( `Update` ) mod %d )" % bucketSize
+    sqlFields = [ groupby, "COUNT( DISTINCT( `InstanceID` ) )" ]
+    sqlQuery  = "SELECT %s FROM `vm_History`" % ", ".join( sqlFields )
+    sqlCond   = [ "`Status` = 'Running'" ]
+    
+    if timespan > 0:
+      sqlCond.append( "TIMESTAMPDIFF( SECOND, `Update`, UTC_TIMESTAMP() ) < %d" % timespan )
+    sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
+    sqlQuery += " GROUP BY %s ORDER BY `Update` ASC" % groupby
+    
+    return self._query( sqlQuery )
+
+  def getRunningInstancesBEPHistory( self, timespan = 0, bucketSize = 900 ):
+    try:
+      bucketSize = max( 300, int( bucketSize ) )
+    except ValueError:
+      return S_ERROR( "Bucket has to be an integer" )
+    try:
+      timespan = max( 0, int( timespan ) )
+    except ValueError:
+      return S_ERROR( "Timespan has to be an integer" )
+
+    groupby   = "FROM_UNIXTIME(UNIX_TIMESTAMP( h.`Update` ) - UNIX_TIMESTAMP( h.`Update` ) mod %d )" % bucketSize
+    sqlFields = [ groupby, " i.Endpoint, COUNT( DISTINCT( h.`InstanceID` ) ) " ]
+    sqlQuery  = "SELECT %s FROM `vm_History` h, `vm_Instances` i" % ", ".join( sqlFields )
+    sqlCond   = [ " h.InstanceID = i.InstanceID AND h.`Status` = 'Running'" ]
+    
+    if timespan > 0:
+      sqlCond.append( "TIMESTAMPDIFF( SECOND, `Update`, UTC_TIMESTAMP() ) < %d" % timespan )
+    sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
+    sqlQuery += " GROUP BY %s , EndPoint ORDER BY `Update` ASC" % groupby
+    
+    return self._query( sqlQuery )
+
+  #######################
+  #Private functions
+  #######################
+
+  def __initializeDB( self ):
+    """
+    Create the tables
+    """
+    tables = self._query( "show tables" )
+    if not tables[ 'OK' ]:
+      return tables
+
+    tablesInDB = [ table[0] for table in tables[ 'Value' ] ]
+    
+    tablesToCreate = {}
+    for tableName in self.tablesDesc:
+      if not tableName in tablesInDB:
+        tablesToCreate[ tableName ] = self.tablesDesc[ tableName ]
+
+    return self._createTables( tablesToCreate )
+
+  def __getTypeTuple( self, element ):
+    """
+    return tuple of (tableName, validStates, idName) for object
+    """
+    # defaults
+    tableName, validStates, idName = '', [], ''
+        
+    if element == 'Image':
+      tableName   = 'vm_Images'
+      validStates = self.validImageStates
+      idName      = 'VMImageID'
+    elif element == 'Instance':
+      tableName   = 'vm_Instances'
+      validStates = self.validInstanceStates
+      idName      = 'InstanceID'
+    elif element == 'RunningPod':
+      tableName   = 'vm_RunningPod'
+      validStates = self.validRunningPodStates
+      idName      = 'RunningPodID'
+
+    return ( tableName, validStates, idName )
+
   def __insertInstance( self, imageName, instanceName, endpoint, runningPodName ):
     """
     Attempts to insert a new Instance for the given Image in a given Endpoint of a runningPodName
@@ -871,6 +1320,7 @@ class VirtualMachineDB( DB ):
                                    transferredFiles, transferredBytes ] )
     return
 
+
   def __setLastLoadJobsAndUptime( self, instanceID, load, jobs, uptime ):
     if not uptime:
       sqlQuery = "SELECT MAX( UNIX_TIMESTAMP( `Update` ) ) - MIN( UNIX_TIMESTAMP( `Update` ) ) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID" % instanceID
@@ -948,320 +1398,6 @@ class VirtualMachineDB( DB ):
       return ret
 
     return S_ERROR( reason )
-
-  #Monitoring functions
-
-  def getInstancesContent( self, selDict, sortList, start = 0, limit = 0 ):
-    """
-    Function to get the contents of the db
-      parameters are a filter to the db
-    """
-    #Main fields
-    tables = ( "`vm_Images` AS img", "`vm_Instances` AS inst" )
-    imageFields = ( 'VMImageID', 'Name', 'CloudEndpoints' )
-    instanceFields = ( 'RunningPod', 'InstanceID', 'Name', 'UniqueID', 'VMImageID',
-                       'Status', 'PublicIP', 'Status', 'ErrorMessage', 'LastUpdate', 'Load', 'Uptime', 'Jobs' )
-
-    fields = [ 'img.%s' % f for f in imageFields ] + [ 'inst.%s' % f for f in instanceFields ]
-    sqlQuery = "SELECT %s FROM %s" % ( ", ".join( fields ), ", ".join( tables ) )
-    sqlCond = [ 'img.VMImageID = inst.VMImageID' ]
-    for field in selDict:
-      if field in instanceFields:
-        sqlField = "inst.%s" % field
-      elif field in imageFields:
-        sqlField = "img.%s" % field
-      elif field in fields:
-        sqlField = field
-      else:
-        continue
-      value = selDict[ field ]
-      if type( value ) in ( types.StringType, types.UnicodeType ):
-        value = [ str( value ) ]
-      sqlCond.append( " OR ".join( [ "%s=%s" % ( sqlField, self._escapeString( str( value ) )[ 'Value' ] ) for value in selDict[field] ] ) )
-    sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
-    if sortList:
-      sqlSortList = []
-      for sorting in sortList:
-        if sorting[0] in instanceFields:
-          sqlField = "inst.%s" % sorting[0]
-        elif sorting[0] in imageFields:
-          sqlField = "img.%s" % sorting[0]
-        elif sorting[0] in fields:
-          sqlField = sorting[0]
-        else:
-          continue
-        direction = sorting[1].upper()
-        if direction not in ( "ASC", "DESC" ):
-          continue
-        sqlSortList.append( "%s %s" % ( sqlField, direction ) )
-      if sqlSortList:
-        sqlQuery += " ORDER BY %s" % ", ".join( sqlSortList )
-    if limit:
-      sqlQuery += " LIMIT %d,%d" % ( start, limit )
-    retVal = self._query( sqlQuery )
-    if not retVal[ 'OK' ]:
-      return retVal
-    data = []
-    #Total records
-    for record in retVal[ 'Value' ]:
-      record = list( record )
-      data.append( record )
-    totalRecords = len( data )
-    sqlQuery = "SELECT COUNT( InstanceID ) FROM %s WHERE %s" % ( ", ".join( tables ),
-                                                                   " AND ".join( sqlCond ) )
-    retVal = self._query( sqlQuery )
-    if retVal[ 'OK' ]:
-      totalRecords = retVal[ 'Value' ][0][0]
-    #return
-    return S_OK( { 'ParameterNames' : fields,
-                         'Records' : data,
-                         'TotalRecords' : totalRecords } )
-
-  def getHistoryForInstanceID( self, instanceId ):
-    try:
-      instanceId = int( instanceId )
-    except ValueError:
-      return S_ERROR( "Instance Id has to be a number!" )
-    
-    fields    = ( 'Status', 'Load', 'Update', 'Jobs', 'TransferredFiles', 'TransferredBytes' )
-    sqlFields = [ '`%s`' % f for f in fields ]
-    
-    sqlQuery = "SELECT %s FROM `vm_History` WHERE InstanceId=%d" % ( ", ".join( sqlFields ), instanceId )
-    retVal = self._query( sqlQuery )
-    if not retVal[ 'OK' ]:
-      return retVal
-    return S_OK( { 'ParameterNames' : fields, 'Records' : retVal[ 'Value' ] } )
-
-  def getInstanceCounters( self, groupField = "Status", selDict = {} ):
-    validFields = VirtualMachineDB.tablesDesc[ 'vm_Instances' ][ 'Fields' ]
-    if groupField not in validFields:
-      return S_ERROR( "%s is not a valid field" % groupField )
-    sqlCond = []
-    for field in selDict:
-      if field not in validFields:
-        return S_ERROR( "%s is not a valid field" % field )
-      value = selDict[ field ]
-      if type( value ) not in ( types.DictType, types.TupleType ):
-        value = ( value, )
-      value = [ self._escapeString( str( v ) )[ 'Value' ] for v in value ]
-      sqlCond.append( "`%s` in (%s)" % ( field, ", ".join( value ) ) )
-    sqlQuery = "SELECT `%s`, COUNT( `%s` ) FROM `vm_Instances`" % ( groupField, groupField )
-    
-    if sqlCond:
-      sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
-    sqlQuery += " GROUP BY `%s`" % groupField
-    
-    result = self._query( sqlQuery )
-    if not result[ 'OK' ]:
-      return result
-    return S_OK( dict( result[ 'Value' ] ) )
-
-  def getHistoryValues( self, averageBucket, selDict = {}, fields2Get = False, timespan = 0 ):
-    try:
-      timespan = max( 0, int( timespan ) )
-    except ValueError:
-      return S_ERROR( "Timespan has to be an integer" )
-
-    cumulativeFields = [ 'Jobs', 'TransferredFiles', 'TransferredBytes' ]
-    validDataFields  = [ 'Load', 'Jobs', 'TransferredFiles', 'TransferredBytes' ]
-    allValidFields   = VirtualMachineDB.tablesDesc[ 'vm_History' ][ 'Fields' ]
-    
-    if not fields2Get:
-      fields2Get = list( validDataFields )
-    for field in fields2Get:
-      if field not in validDataFields:
-        return S_ERROR( "%s is not a valid data field" % field )
-
-    #paramFields = fields2Get
-    try:
-      bucketSize = int( averageBucket )
-    except ValueError:
-      return S_ERROR( "Average bucket has to be an integer" )
-    
-    sqlGroup = "FROM_UNIXTIME(UNIX_TIMESTAMP( `Update` ) - UNIX_TIMESTAMP( `Update` ) mod %d)" % bucketSize
-    sqlFields = [ '`InstanceID`', sqlGroup ] #+ [ "SUM(`%s`)/COUNT(`%s`)" % ( f, f ) for f in fields2Get ]
-    for field in fields2Get:
-      if field in cumulativeFields:
-        sqlFields.append( "MAX(`%s`)" % field )
-      else:
-        sqlFields.append( "SUM(`%s`)/COUNT(`%s`)" % ( field, field ) )
-
-    sqlGroup    = "%s, InstanceID" % sqlGroup
-    paramFields = [ 'Update' ] + fields2Get
-    sqlCond     = []
-    
-    for field in selDict:
-      if field not in allValidFields:
-        return S_ERROR( "%s is not a valid field" % field )
-      value = selDict[ field ]
-      if type( value ) not in ( types.ListType, types.TupleType ):
-        value = ( value, )
-      value = [ self._escapeString( str( v ) )[ 'Value' ] for v in value ]
-      sqlCond.append( "`%s` in (%s)" % ( field, ", ".join( value ) ) )
-    if timespan > 0:
-      sqlCond.append( "TIMESTAMPDIFF( SECOND, `Update`, UTC_TIMESTAMP() ) < %d" % timespan )
-    sqlQuery = "SELECT %s FROM `vm_History`" % ", ".join( sqlFields )
-    if sqlCond:
-      sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
-    sqlQuery += " GROUP BY %s ORDER BY `Update` ASC" % sqlGroup
-    result = self._query( sqlQuery )
-    if not result[ 'OK' ]:
-      return result
-    dbData = result[ 'Value' ]
-    #Need ext?
-    requireExtension = set()
-    for i in range( len( fields2Get ) ):
-      f = fields2Get[i]
-      if f in cumulativeFields:
-        requireExtension.add( i )
-
-    if requireExtension:
-      rDates = []
-      for row in dbData:
-        if row[1] not in rDates:
-          rDates.append( row[1] )
-      vmData = {}
-      for row in dbData:
-        vmID = row[0]
-        if vmID not in vmData:
-          vmData[ vmID ] = {}
-        vmData[ vmID ][ row[1] ] = row[2:]
-      rDates.sort()
-
-      dbData = []
-      for vmID in vmData:
-        prevValues = False
-        for rDate in rDates:
-          if rDate not in vmData[ vmID ]:
-            if prevValues:
-              instValues = [ rDate ]
-              for i in range( len( prevValues ) ):
-                instValues.append( prevValues[ i ] )
-              dbData.append( instValues )
-          else:
-            row = vmData[ vmID ][ rDate ]
-            prevValues = []
-            for i in range( len ( row ) ):
-              if i in requireExtension:
-                prevValues.append( row[i] )
-              else:
-                prevValues.append( 0 )
-
-            instValues = [ rDate ]
-            for i in range( len( row ) ):
-              instValues.append( row[ i ] )
-            dbData.append( instValues )
-    else:
-      #If we don't require extension just strip vmName
-      dbData = [ row[1:] for row in dbData ]
-
-    #Final sum
-    sumData = {}
-    for record in dbData:
-      recDate = record[0]
-      rawData = record[1:]
-      if recDate not in sumData:
-        sumData[ recDate ] = [ 0.0 for f in rawData ]
-      for i in range( len( rawData ) ):
-        sumData[ recDate ][i] += float( rawData[i] )
-    finalData = []
-    if len( sumData ) > 0:
-      firstValues = sumData[ sorted( sumData )[0] ]
-      for date in sorted( sumData ):
-        finalData.append( [ date ] )
-        values = sumData[ date ]
-        for i in range( len( values ) ):
-          if i in requireExtension:
-            finalData[-1].append( max( 0, values[i] - firstValues[i] ) )
-          else:
-            finalData[-1].append( values[i] )
-
-    return S_OK( { 'ParameterNames' : paramFields,
-                         'Records' : finalData } )
-
-  def getRunningInstancesHistory( self, timespan = 0, bucketSize = 900 ):
-    
-    try:
-      bucketSize = max( 300, int( bucketSize ) )
-    except ValueError:
-      return S_ERROR( "Bucket has to be an integer" )
-    
-    try:
-      timespan = max( 0, int( timespan ) )
-    except ValueError:
-      return S_ERROR( "Timespan has to be an integer" )
-
-    groupby   = "FROM_UNIXTIME(UNIX_TIMESTAMP( `Update` ) - UNIX_TIMESTAMP( `Update` ) mod %d )" % bucketSize
-    sqlFields = [ groupby, "COUNT( DISTINCT( `InstanceID` ) )" ]
-    sqlQuery  = "SELECT %s FROM `vm_History`" % ", ".join( sqlFields )
-    sqlCond   = [ "`Status` = 'Running'" ]
-    
-    if timespan > 0:
-      sqlCond.append( "TIMESTAMPDIFF( SECOND, `Update`, UTC_TIMESTAMP() ) < %d" % timespan )
-    sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
-    sqlQuery += " GROUP BY %s ORDER BY `Update` ASC" % groupby
-    
-    return self._query( sqlQuery )
-
-  def getRunningInstancesBEPHistory( self, timespan = 0, bucketSize = 900 ):
-    try:
-      bucketSize = max( 300, int( bucketSize ) )
-    except ValueError:
-      return S_ERROR( "Bucket has to be an integer" )
-    try:
-      timespan = max( 0, int( timespan ) )
-    except ValueError:
-      return S_ERROR( "Timespan has to be an integer" )
-
-    groupby   = "FROM_UNIXTIME(UNIX_TIMESTAMP( h.`Update` ) - UNIX_TIMESTAMP( h.`Update` ) mod %d )" % bucketSize
-    sqlFields = [ groupby, " i.Endpoint, COUNT( DISTINCT( h.`InstanceID` ) ) " ]
-    sqlQuery  = "SELECT %s FROM `vm_History` h, `vm_Instances` i" % ", ".join( sqlFields )
-    sqlCond   = [ " h.InstanceID = i.InstanceID AND h.`Status` = 'Running'" ]
-    
-    if timespan > 0:
-      sqlCond.append( "TIMESTAMPDIFF( SECOND, `Update`, UTC_TIMESTAMP() ) < %d" % timespan )
-    sqlQuery += " WHERE %s" % " AND ".join( sqlCond )
-    sqlQuery += " GROUP BY %s , EndPoint ORDER BY `Update` ASC" % groupby
-    
-    return self._query( sqlQuery )
-
-  def getRunningPodDict( self, runningPodName ):
-    """
-    Return from CS a Dictionary with RunningPod definition
-    """
-    
-    #FIXME: this MUST not be on the DB module !! 
-    #FIXME: isn't checking for Image
-    
-    runningPodsCSPath = '/Resources/VirtualMachines/RunningPods'
-    
-    definedRunningPods = gConfig.getSections( runningPodsCSPath )
-    if not definedRunningPods[ 'OK' ]:
-      return definedRunningPods
-
-    if runningPodName not in definedRunningPods['Value']:
-      return S_ERROR( 'RunningPod "%s" not defined' % runningPodName )
-
-    runningPodCSPath = '%s/%s' % ( runningPodsCSPath, runningPodName )
-
-    runningPodDict = {}
-
-    cloudEndpoints = gConfig.getValue( '%s/CloudEndpoints' % runningPodCSPath , '' )
-    if not cloudEndpoints:
-      return S_ERROR( 'Missing CloudEndpoints for RunnningPod "%s"' % runningPodName )
-    
-    for option, value in gConfig.getOptionsDict( runningPodCSPath )['Value'].items():
-      runningPodDict[option] = value
-      
-    runningPodRequirementsDict = gConfig.getOptionsDict( '%s/Requirements' % runningPodCSPath )
-    if not runningPodRequirementsDict[ 'OK' ]:
-      return S_ERROR( 'Missing Requirements for RunningPod "%s"' % runningPodName )
-    if 'CPUTime' in runningPodRequirementsDict[ 'Value' ]:
-      
-      runningPodRequirementsDict['Value']['CPUTime'] = int( runningPodRequirementsDict['Value']['CPUTime'] )
-    runningPodDict['Requirements'] = runningPodRequirementsDict['Value']
-
-    return S_OK( runningPodDict )
 
 #...............................................................................
 #EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF

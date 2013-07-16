@@ -75,18 +75,17 @@ class VMDirector:
         return runningPodDict
       self.log.verbose( 'Trying to configure RunningPodDict:', runningPodDict )
       runningPodDict = runningPodDict[ 'Value' ]
-      for option in ['Image', 'MaxInstances', 'CPUPerInstance', 'Priority', 'CloudEndpoints']:
+      for option in ['Image', 'CloudEndpoints', 'Priority', 'Governance', 'Requirements']:
         if option not in runningPodDict.keys():
           self.log.error( 'Missing option in "%s" RunningPod definition:' % runningPodName, option )
           continue
         
       self.runningPods[runningPodName] = {}
       self.runningPods[runningPodName]['Image']            = runningPodDict['Image']
-      self.runningPods[runningPodName]['RequirementsDict'] = runningPodDict['Requirements']
-      self.runningPods[runningPodName]['MaxInstances']     = int( runningPodDict['MaxInstances'] )
-      self.runningPods[runningPodName]['CPUPerInstance']   = int( runningPodDict['CPUPerInstance'] )
-      self.runningPods[runningPodName]['Priority']         = int( runningPodDict['Priority'] )
       self.runningPods[runningPodName]['CloudEndpoints']   = runningPodDict['CloudEndpoints']
+      self.runningPods[runningPodName]['Priority']         = int( runningPodDict['Priority'] )
+      self.runningPods[runningPodName]['GovernanceDict']   = runningPodDict['Governance']
+      self.runningPods[runningPodName]['RequirementsDict'] = runningPodDict['Requirements']
 
   def submitInstance( self, imageName, endpoint, numVMsToSubmit, runningPodName ):
     """
