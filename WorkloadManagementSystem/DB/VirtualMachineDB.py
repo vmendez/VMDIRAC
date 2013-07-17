@@ -674,6 +674,8 @@ class VirtualMachineDB( DB ):
       return S_ERROR( 'Missing Governance/campaignStartDate in RunnningPod "%s"' % runningPodName )
     if not ('campaignEndDate' in runningPodGovernanceDict[ 'Value' ]):
       return S_ERROR( 'Missing Governance/campaignEndDate in RunnningPod "%s"' % runningPodName )
+    if not ('resourceThreshold' in runningPodGovernanceDict[ 'Value' ]):
+      return S_ERROR( 'Missing Governance/resourceThreshold in RunnningPod "%s"' % runningPodName )
 
     runningPodDict['Governance'] = runningPodGovernanceDict['Value']
 

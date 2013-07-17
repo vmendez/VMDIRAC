@@ -58,7 +58,7 @@ class OcciConfiguration( EndpointConfiguration ):
   """
 
   # Keys that MUST be present on ANY Occi CloudEndpoint configuration in the CS
-  MANDATORY_KEYS = [ 'cloudDriver', 'vmPolicy', 'vmStopPolicy', 'siteName', 'occiURI', 'maxEndpointInstances', 'auth', 'iface' ]
+  MANDATORY_KEYS = [ 'cloudDriver', 'vmPolicy', 'vmStopPolicy', 'vmUsage', 'siteName', 'occiURI', 'maxEndpointInstances', 'auth', 'iface' ]
     
   def __init__( self, occiEndpoint ):
     """
@@ -90,6 +90,8 @@ class OcciConfiguration( EndpointConfiguration ):
     self.__cloudDriver             = occiOptions.get( 'cloudDriver'             , None )
     self.__vmStopPolicy            = occiOptions.get( 'vmStopPolicy'            , None )
     self.__vmPolicy                = occiOptions.get( 'vmPolicy'                , None )
+    self.__vmUsage                 = occiOptions.get( 'vmUsage'                 , None )
+    self.__oportunisticThreshold   = occiOptions.get( 'oportunisticThreshold'   , None )
     self.__siteName                = occiOptions.get( 'siteName'                , None )
     self.__maxEndpointInstances    = occiOptions.get( 'maxEndpointInstances'    , None )
     
@@ -116,6 +118,8 @@ class OcciConfiguration( EndpointConfiguration ):
     config[ 'cloudDriver' ]             = self.__cloudDriver
     config[ 'vmPolicy' ]                = self.__vmPolicy
     config[ 'vmStopPolicy' ]            = self.__vmStopPolicy
+    config[ 'vmUsage' ]                 = self.__vmUsage
+    config[ 'oportunisticThreshold' ]   = self.__oportunisticThreshold
     config[ 'siteName' ]                = self.__siteName
     config[ 'maxEndpointInstances' ]    = self.__maxEndpointInstances
     config[ 'occiURI' ]                 = self.__occiURI 
@@ -160,6 +164,13 @@ class OcciConfiguration( EndpointConfiguration ):
         return S_ERROR( 'proxyCaPath is None' )
     else:
       return S_ERROR( 'endpoint auth: %s not defined (userpasswd/proxycacert)' % self.__auth)
+
+    # depending on vmUsage value additional mandatory key should be considered:
+    if self.__vmUsage == 'oportunistic':
+      if self.__oportunisticThreshold is None:
+        return S_ERROR( 'oportunisticThreshold is None' )
+    if self.__vmUsage != 'credit':
+        return S_ERROR( 'vmUsage %s not defined (credit/oportunistic)' % self.__vmUsage)
     
     self.log.info( '*' * 50 )
     self.log.info( 'Displaying endpoint info' )
@@ -201,7 +212,7 @@ class NovaConfiguration( EndpointConfiguration ):
   """
 
   # Keys that MUST be present on ANY Nova CloudEndpoint configuration in the CS
-  MANDATORY_KEYS = [ 'ex_force_auth_url', 'ex_force_service_region', 'ex_tenant_name', 'vmPolicy', 'vmStopPolicy', 'cloudDriver', 'siteName', 'maxEndpointInstances' ]
+  MANDATORY_KEYS = [ 'ex_force_auth_url', 'ex_force_service_region', 'ex_tenant_name', 'vmPolicy', 'vmStopPolicy', 'vmUsage', 'cloudDriver', 'siteName', 'maxEndpointInstances' ]
     
   def __init__( self, novaEndpoint ):
     """
@@ -230,6 +241,8 @@ class NovaConfiguration( EndpointConfiguration ):
     self.__cloudDriver             = novaOptions.get( 'cloudDriver'            , None )
     self.__vmStopPolicy            = novaOptions.get( 'vmStopPolicy'           , None )
     self.__vmPolicy                = novaOptions.get( 'vmPolicy'               , None )
+    self.__vmUsage                 = novaOptions.get( 'vmUsage'                , None )
+    self.__oportunisticThreshold   = novaOptions.get( 'oportunisticThreshold'   , None )
     self.__siteName                = novaOptions.get( 'siteName'               , None )
     self.__maxEndpointInstances    = novaOptions.get( 'maxEndpointInstances'   , None )
     
@@ -253,6 +266,8 @@ class NovaConfiguration( EndpointConfiguration ):
     config[ 'cloudDriver' ]             = self.__cloudDriver
     config[ 'vmPolicy' ]                = self.__vmPolicy
     config[ 'vmStopPolicy' ]            = self.__vmStopPolicy
+    config[ 'vmUsage' ]                 = self.__vmUsage
+    config[ 'oportunisticThreshold' ]   = self.__oportunisticThreshold
     config[ 'siteName' ]                = self.__siteName
     config[ 'maxEndpointInstances' ]    = self.__maxEndpointInstances
 
@@ -288,6 +303,13 @@ class NovaConfiguration( EndpointConfiguration ):
       return S_ERROR( 'User is None' )
     if self.__password is None:
       return S_ERROR( 'Password is None' )
+    
+    # depending on vmUsage value additional mandatory key should be considered:
+    if self.__vmUsage == 'oportunistic':
+      if self.__oportunisticThreshold is None:
+        return S_ERROR( 'oportunisticThreshold is None' )
+    if self.__vmUsage != 'credit':
+        return S_ERROR( 'vmUsage %s not defined (credit/oportunistic)' % self.__vmUsage)
     
     self.log.info( '*' * 50 )
     self.log.info( 'Displaying endpoint info' )
