@@ -2,7 +2,7 @@
 # $HeadURL$
 # File :   VirtualMachineDB.py
 # Author : Ricardo Graciani
-# occi and multi endpoint author : Victor Mendez
+# Author : Victor Mendez
 ########################################################################
 """ VirtualMachineDB class is a front-end to the virtual machines DB
 
@@ -45,7 +45,7 @@ class VirtualMachineDB( DB ):
   validImageStates    = [ 'New', 'Validated', 'Error' ]
   validInstanceStates = [ 'New', 'Submitted', 'Wait_ssh_context', 'Contextualizing', 
                           'Running', 'Stopping', 'Halted', 'Stalled', 'Error' ]
-  validRunningPodStates    = [ 'Active', 'Inactive' ]
+  validRunningPodStates    = [ 'Active', 'Unactive' ]
 
   # In seconds !
   stallingInterval = 30 * 60 
@@ -173,11 +173,11 @@ class VirtualMachineDB( DB ):
     enddate=Time.fromString(runningPodGovernanceDict['campaignEndDate'])
     currentdate=Time.date()
     if dcurrent<startdate:
-      runningPodState='unactive'
+      runningPodState='Unactive'
     elfi dcurrent>enddate:
-      runningPodState='unactive'
+      runningPodState='Unactive'
     else:
-      runningPodState='active'
+      runningPodState='Active'
 
     return self.__setState( 'RunningPod', runningPodID, runningPodState )
 
@@ -684,7 +684,8 @@ class VirtualMachineDB( DB ):
   def insertRunningPod( self, runningPodName ):
     """
     Insert a RunningPod record, for governance purposes.
-    If RunningPod name already exists then do nothing
+    If RunningPod name already exists then return S_ERROR, 
+    to be called by VMScheduler on creation of RunningPod record
     """
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
     
@@ -705,13 +706,38 @@ class VirtualMachineDB( DB ):
 
     runningPodGovernanceDict = runningPodDict['Governance']
 
-    fields = [ 'RunningPodName', 'CampaignVcpuHoursCredit', 'CampaignStartDate', 'CampaignEndDate']
-    values = [ runningPodName, runningPodGovernanceDict['campaignVcpuHoursCredit'], runningPodGovernanceDict['campaignStartDate'], runningPodGovernanceDict['campaignEndDate']]
+    fields = [ 'RunningPodName', 'CampaignVcpuHoursCredit', 'UsedVcpuHours','CampaignStartDate', 'CampaignEndDate']
+    values = [ runningPodName, runningPodGovernanceDict['campaignVcpuHoursCredit'], 0, runningPodGovernanceDict['campaignStartDate'], runningPodGovernanceDict['campaignEndDate']]
 
-    # Status and UsedCpuHours fields are set and get from VMScheduler dynamically.
+    # Status field is set and get from VMScheduler dynamically.
 
     return self._insert( tableName , fields, values )
 
+  def checkRunningPodCredit( self, runningPodName ):
+    """
+    Checks if there is more credit
+    If RunningPod name doest not exists then return S_ERROR, 
+    If credit returns S_OK( True ), if no more credit returns S_OK( False )
+    """
+    tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
+    
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    if not runningPodID[ 'OK' ]:
+      return runningPodID
+    runningPodID = runningPodID[ 'Value' ]
+
+    if len( runningPodID ) == 0:
+      return S_ERROR( 'RunningPod name "%s" is not in DB' % runningPodName )
+
+    runningPodDBRecord = self.__getInfo( 'RunningPod', runningPodID )
+    if not runningPodDBRecord[ 'OK' ]:
+      return runningPodDBRecord
+    runningPodDBRecord = runningPodDBRecord[ 'Value' ]
+    
+    if runningPodDBRecord[ 'UsedVcpuHours' ] < runningPodDBRecord[ 'CampaignVcpuHoursCredit' ]:
+      return S_OK( True )
+    
+    return S_OK( False )
 
   #############################
   #Monitoring Public Functions
@@ -1338,7 +1364,7 @@ class VirtualMachineDB( DB ):
 
   def __getInfo( self, element, iD ):
     """
-    Return dictionary with info for Images and Instances by ID
+    Return dictionary with info for Images, Instances and RunningPod by ID
     """
     tableName, _validStates, idName = self.__getTypeTuple( element )
     if not tableName:
