@@ -149,6 +149,34 @@ class VirtualMachineScheduler( AgentModule ):
     for directorName, directorDict in self.directors.items():
       self.log.verbose( 'Checking Director:', directorName )
       for runningPodName in directorDict['director'].runningPods:
+        result = virtualMachineDB.insertRunningPod(runningPodName)
+        if not result['OK']:
+          self.log.error( 'Error inserting Running Pod %s in DB: %s' % ( runningPodName, result['Message'] ) )
+          continue
+        result = virtualMachineDB.setRunningPodStatus(runningPodName)
+        if not result['OK']:
+          self.log.error( 'Error in setRunningPodStatus %s: %s' % ( runningPodName, result['Message'] ) )
+          continue
+        result = virtualMachineDB.getRunningPodStatus(runningPodName)
+        if not result['OK']:
+          self.log.error( 'Error in getRunningPodStatus %s: %s' % ( runningPodName, result['Message'] ) )
+          continue
+        status = result[ 'Value' ]
+        if status == 'Active':
+          self.log.info( 'RunningPod %s is Active' % ( runningPodName ) )
+        else
+          self.log.info( 'RunningPod %s is Unactive, do nothing' % ( runningPodName ) )
+          continue
+        result = virtualMachineDB.checkRunningPodCredit(runningPodName)
+        if not result['OK']:
+          self.log.error( 'Error in checkRunningPodCredit %s: %s' % ( runningPodName, result['Message'] ) )
+          continue
+        if result[ 'Value' ]:
+          self.log.info( 'RunningPod %s has credit' % ( runningPodName ) )
+        else
+          self.log.info( 'RunningPod %s has no more credit, do nothing' % ( runningPodName ) )
+          continue
+ 
         runningPodDict = directorDict['director'].runningPods[runningPodName]
         imageName = runningPodDict['Image']
         instances = 0

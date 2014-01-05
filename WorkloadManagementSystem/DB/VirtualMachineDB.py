@@ -684,7 +684,7 @@ class VirtualMachineDB( DB ):
   def insertRunningPod( self, runningPodName ):
     """
     Insert a RunningPod record, for governance purposes.
-    If RunningPod name already exists then return S_ERROR, 
+    If RunningPod name already exists then do nothing and return S_OK, 
     to be called by VMScheduler on creation of RunningPod record
     """
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
@@ -695,7 +695,7 @@ class VirtualMachineDB( DB ):
     runningPodID = runningPodID[ 'Value' ]
 
     if len( runningPodID ) > 0:
-      return S_ERROR( 'RunningPod name "%s" is not unique' % runningPodName )
+      return S_OK( 'RunningPod name "%s" is not unique' % runningPodName )
 
     # The runningPod does not exits in DB, has to be inserted
 
