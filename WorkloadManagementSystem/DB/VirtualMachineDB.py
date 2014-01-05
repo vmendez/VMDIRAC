@@ -114,7 +114,7 @@ class VirtualMachineDB( DB ):
 
 
   tablesDesc[ 'vm_RunningPod' ] = { 'Fields' : { 'RunningPodID' : 'BIGINT UNSIGNED AUTO_INCREMENT NOT NULL',
-                                              'RunningPodName' : 'VARCHAR(32) NOT NULL',
+                                              'RunningPod' : 'VARCHAR(32) NOT NULL',
                                               'CampaignVcpuHoursCredit' : 'FLOAT NOT NULL',
                                               'UsedVcpuHours' : 'FLOAT NOT NULL',
                                               'CampaignStartDate' : 'DATETIME',
@@ -122,7 +122,7 @@ class VirtualMachineDB( DB ):
                                               'Status' : 'VARCHAR(32) NOT NULL',
                                             },
                                    'PrimaryKey' : 'RunningPodID',
-                                   'Indexes': { 'RunningPod': [ 'RunningPodName', 'Status' ]
+                                   'Indexes': { 'RunningPod': [ 'RunningPod', 'Status' ]
                                           }
                                }
 
@@ -153,7 +153,7 @@ class VirtualMachineDB( DB ):
     """
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
    
-    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
     runningPodID = runningPodID[ 'Value' ]
@@ -190,7 +190,7 @@ class VirtualMachineDB( DB ):
     """
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
    
-    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
     runningPodID = runningPodID[ 'Value' ]
@@ -443,12 +443,15 @@ class VirtualMachineDB( DB ):
     return S_OK( stallingInstances )
 
 
-  def instanceIDHeartBeat( self, uniqueID, load, jobs, transferredFiles, transferredBytes, uptime ):
+  def instanceIDHeartBeat( self, uniqueID, load, jobs, transferredFiles, transferredBytes, uptime, vcpus ):
     """
-    Insert the heart beat info from a running instance
+    Insert the heart beat info from a running instance in Instance, History DB
+    and validated status for Image DB
     It checks the status of the instance and the corresponding image
     Declares "Running" the instance and the image 
     It returns S_ERROR if the status is not OK
+    Set Instance DB Load and Uptime
+    Set RunningPod DB UsedVcpuHours
     """
     instanceID = self.__getInstanceID( uniqueID )
     if not instanceID[ 'OK' ]:
@@ -461,8 +464,14 @@ class VirtualMachineDB( DB ):
 
     self.__setLastLoadJobsAndUptime( instanceID, load, jobs, uptime )
 
+    if status == 'Running':
+      result = self.__setUsedVcpuHours( instanceID, vcpus)
+      if not result[ 'OK' ]:
+        self.log.error( 'Trying to setUsedVcpuHours: "%s"' % result )
+
     if status == 'Stopping':
       return S_OK( 'stop' )
+
     return S_OK()
 
   def getPublicIpFromInstance( self, uniqueId ):
@@ -689,7 +698,7 @@ class VirtualMachineDB( DB ):
     """
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
     
-    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
     runningPodID = runningPodID[ 'Value' ]
@@ -706,7 +715,7 @@ class VirtualMachineDB( DB ):
 
     runningPodGovernanceDict = runningPodDict['Governance']
 
-    fields = [ 'RunningPodName', 'CampaignVcpuHoursCredit', 'UsedVcpuHours','CampaignStartDate', 'CampaignEndDate']
+    fields = [ 'RunningPod', 'CampaignVcpuHoursCredit', 'UsedVcpuHours','CampaignStartDate', 'CampaignEndDate']
     values = [ runningPodName, runningPodGovernanceDict['campaignVcpuHoursCredit'], 0, runningPodGovernanceDict['campaignStartDate'], runningPodGovernanceDict['campaignEndDate']]
 
     # Status field is set and get from VMScheduler dynamically.
@@ -721,7 +730,7 @@ class VirtualMachineDB( DB ):
     """
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
     
-    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPodName' ], [ runningPodName ] )
+    runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
     runningPodID = runningPodID[ 'Value' ]
@@ -1359,6 +1368,50 @@ class VirtualMachineDB( DB ):
                                                                                                      jobs,
                                                                                                      load,
                                                                                                      instanceID )
+    self._update( sqlUpdate )
+    return S_OK()
+
+  def __setUsedVcpuHours( self, instanceID, vcpus)
+    sqlQuery = "SELECT COUNT(*) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID" % instanceID
+    result = self._query( sqlQuery )
+    if not result[ 'OK' ]:
+      return result
+    raws = int( result[ 'Value' ][0][0] )
+    limit = raws - 1
+
+    sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID LIMIT %d,1" % ( instanceID, limit )
+    result = self._query( sqlQuery )
+    if not result[ 'OK' ]:
+      return result
+    timestampLast = long( result[ 'Value' ][0][0] )
+
+    limit = limit - 1
+    sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID LIMIT %d,1" % ( instanceID, limit )
+    result = self._query( sqlQuery )
+    if not result[ 'OK' ]:
+      return result
+    timestampPrevLast = long( result[ 'Value' ][0][0] )
+
+    hoursGap = float( timestampLast - timestampPrevLast ) / 3600
+    gapUsedVcpuHous = hoursGap * vcpus
+
+    tableName, validStates, idName = self.__getTypeTuple( 'Instances' )
+   
+    runningPodName = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ instanceID ] )
+    if not runningPodName[ 'OK' ]:
+      return runningPodName
+    runningPodName = runningPodName[ 'Value' ]
+
+    tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
+   
+    usedVcpuHours = self._getFields( tableName, [ 'RunningPod' ], [ 'UsedVcpuHours' ], [ runningPodName ] )
+    if not usedVcpuHours[ 'OK' ]:
+      return usedVcpuHours
+    usedVcpuHours = float(usedVcpuHours[ 'Value' ])
+
+    usedVcpuHours = usedVcpuHours + gapUsedVcpuHours
+
+    sqlUpdate = "UPDATE `vm_Instances` SET `UsedVcpuHours` = %f WHERE `InstanceID` = %d" % ( usedVcpuHours, instanceID )
     self._update( sqlUpdate )
     return S_OK()
 

@@ -129,9 +129,11 @@ class VirtualMachineManagerHandler( RequestHandler ):
 
 
   types_instanceIDHeartBeat = [ StringType, FloatType, ( IntType, LongType ),
-                               ( IntType, LongType ), ( IntType, LongType ) ]
+                               ( IntType, LongType ), ( IntType, LongType ), 
+                               ( IntType, LongType ), IntType ]
   def export_instanceIDHeartBeat( self, uniqueID, load, jobs,
-                                  transferredFiles, transferredBytes, uptime = 0 ):
+                                  transferredFiles, transferredBytes, 
+                                  uptime = 0, vcpus=1 ):
     """
     Insert the heart beat info from a running instance
     It checks the status of the instance and the corresponding image
@@ -148,7 +150,8 @@ class VirtualMachineManagerHandler( RequestHandler ):
       uptime = 0
       
     res = gVirtualMachineDB.instanceIDHeartBeat( uniqueID, load, jobs,
-                                                 transferredFiles, transferredBytes, uptime )
+                                           transferredFiles, transferredBytes, 
+                                           uptime, vcpus )
     self.__logResult( 'instanceIDHeartBeat', res )
     
     return res
