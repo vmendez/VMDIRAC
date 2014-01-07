@@ -179,6 +179,7 @@ class VirtualMachineScheduler( AgentModule ):
           oportunisticRunningPod = True
  
         runningPodDict = directorDict['director'].runningPods[runningPodName]
+        runningPodGovernanceDict = runningPodDict['Governance']
         imageName = runningPodDict['Image']
         instances = 0
         result = virtualMachineDB.getInstancesByStatus( 'Running' )
@@ -194,7 +195,7 @@ class VirtualMachineScheduler( AgentModule ):
         if result['OK'] and imageName in result['Value']:
           instances += len( result['Value'][imageName] )
         self.log.verbose( 'Checking Image %s:' % imageName, instances )
-        maxInstances = runningPodDict['MaxInstances']
+        maxInstances = runningPodGovernanceDict['MaxInstances']
         if instances >= maxInstances:
           self.log.info( '%s >= %s Running instances reach MaxInstances for runningPod: %s, skipping' % ( instances, maxInstances, runningPodName ) )
           continue
@@ -280,8 +281,8 @@ class VirtualMachineScheduler( AgentModule ):
           self.log.info( 'No matching jobs for %s found, skipping' % imageName )
           continue
 
-        if instances and ( cpu / instances ) < runningPodDict['CPUPerInstance']:
-          self.log.info( 'Waiting CPU per Running instance %s < %s, skipping' % ( cpu / instances, runningPodDict['CPUPerInstance'] ) )
+        if instances and ( cpu / instances ) < runningPodGovernanceDict['CPUPerInstance']:
+          self.log.info( 'Waiting CPU per Running instance %s < %s, skipping' % ( cpu / instances, runningPodGovernanceDict['CPUPerInstance'] ) )
           continue
 
         if directorName not in imagesToSubmit:

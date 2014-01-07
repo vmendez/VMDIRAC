@@ -677,14 +677,14 @@ class VirtualMachineDB( DB ):
       return S_ERROR( 'Missing Governance for RunningPod "%s"' % runningPodName )
     if not ('CPUPerInstance' in runningPodGovernanceDict[ 'Value' ]):
       return S_ERROR( 'Missing Governance/CPUPerInstance in RunnningPod "%s"' % runningPodName )
+    if not ('MaxInstances' in runningPodGovernanceDict[ 'Value' ]):
+      return S_ERROR( 'Missing Governance/MaxInstances in RunnningPod "%s"' % runningPodName )
     if not ('campaignVcpuHoursCredit' in runningPodGovernanceDict[ 'Value' ]):
       return S_ERROR( 'Missing Governance/campaignVcpuHoursCredit in RunnningPod "%s"' % runningPodName )
     if not ('campaignStartDate' in runningPodGovernanceDict[ 'Value' ]):
       return S_ERROR( 'Missing Governance/campaignStartDate in RunnningPod "%s"' % runningPodName )
     if not ('campaignEndDate' in runningPodGovernanceDict[ 'Value' ]):
       return S_ERROR( 'Missing Governance/campaignEndDate in RunnningPod "%s"' % runningPodName )
-    if not ('resourceThreshold' in runningPodGovernanceDict[ 'Value' ]):
-      return S_ERROR( 'Missing Governance/resourceThreshold in RunnningPod "%s"' % runningPodName )
 
     runningPodDict['Governance'] = runningPodGovernanceDict['Value']
 
