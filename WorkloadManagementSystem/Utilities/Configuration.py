@@ -58,7 +58,7 @@ class OcciConfiguration( EndpointConfiguration ):
   """
 
   # Keys that MUST be present on ANY Occi CloudEndpoint configuration in the CS
-  MANDATORY_KEYS = [ 'cloudDriver', 'vmPolicy', 'vmStopPolicy', 'vmUsage', 'siteName', 'occiURI', 'maxEndpointInstances', 'auth', 'iface' ]
+  MANDATORY_KEYS = [ 'cloudDriver', 'vmPolicy', 'vmStopPolicy', 'siteName', 'occiURI', 'maxEndpointInstances', 'maxOportunisticEndpointInstances', 'auth', 'iface' ]
     
   def __init__( self, occiEndpoint ):
     """
@@ -85,15 +85,13 @@ class OcciConfiguration( EndpointConfiguration ):
     self.__user                    = occiOptions.get( 'user'                    , None )
     self.__password                = occiOptions.get( 'password'                , None )
     self.__userCredPath            = occiOptions.get( 'userCredPath'            , None )
-    self.__proxyCaPath             = occiOptions.get( 'proxyCaPath'             , None )
 
     self.__cloudDriver             = occiOptions.get( 'cloudDriver'             , None )
     self.__vmStopPolicy            = occiOptions.get( 'vmStopPolicy'            , None )
     self.__vmPolicy                = occiOptions.get( 'vmPolicy'                , None )
-    self.__vmUsage                 = occiOptions.get( 'vmUsage'                 , None )
-    self.__oportunisticThreshold   = occiOptions.get( 'oportunisticThreshold'   , None )
     self.__siteName                = occiOptions.get( 'siteName'                , None )
     self.__maxEndpointInstances    = occiOptions.get( 'maxEndpointInstances'    , None )
+    self.__maxOportunisticEndpointInstances    = occiOptions.get( 'maxOportunisticEndpointInstances'    , None )
     
     self.__occiURI                 = occiOptions.get( 'occiURI'                 , None )
     self.__imageDriver             = occiOptions.get( 'imageDriver'             , None )
@@ -113,15 +111,13 @@ class OcciConfiguration( EndpointConfiguration ):
     config[ 'user' ]                    = self.__user
     config[ 'password' ]                = self.__password
     config[ 'userCredPath' ]            = self.__userCredPath
-    config[ 'proxyCaPath' ]             = self.__proxyCaPath
 
     config[ 'cloudDriver' ]             = self.__cloudDriver
     config[ 'vmPolicy' ]                = self.__vmPolicy
     config[ 'vmStopPolicy' ]            = self.__vmStopPolicy
-    config[ 'vmUsage' ]                 = self.__vmUsage
-    config[ 'oportunisticThreshold' ]   = self.__oportunisticThreshold
     config[ 'siteName' ]                = self.__siteName
     config[ 'maxEndpointInstances' ]    = self.__maxEndpointInstances
+    config[ 'maxOportunisticEndpointInstances' ]    = self.__maxOportunisticEndpointInstances
     config[ 'occiURI' ]                 = self.__occiURI 
     config[ 'iface' ]                   = self.__iface
 
@@ -160,18 +156,9 @@ class OcciConfiguration( EndpointConfiguration ):
     elif self.__auth == 'proxycacert':
       if self.__userCredPath is None:
         return S_ERROR( 'userCredPath is None' )
-      if self.__proxyCaPath is None:
-        return S_ERROR( 'proxyCaPath is None' )
     else:
       return S_ERROR( 'endpoint auth: %s not defined (userpasswd/proxycacert)' % self.__auth)
 
-    # depending on vmUsage value additional mandatory key should be considered:
-    if self.__vmUsage == 'oportunistic':
-      if self.__oportunisticThreshold is None:
-        return S_ERROR( 'oportunisticThreshold is None' )
-    if self.__vmUsage != 'credit':
-        return S_ERROR( 'vmUsage %s not defined (credit/oportunistic)' % self.__vmUsage)
-    
     self.log.info( '*' * 50 )
     self.log.info( 'Displaying endpoint info' )
     for key, value in endpointConfig.iteritems():
@@ -191,7 +178,7 @@ class OcciConfiguration( EndpointConfiguration ):
     if self.__auth == 'userpasswd':
       return ( self.__auth, self.__user, self.__password )
     elif self.__auth == 'proxycacert':
-      return ( self.__auth, self.__userCredPath, self.__proxyCaPath )
+      return ( self.__auth, self.__userCredPath, none )
     else:
       return S_ERROR( 'endpoint auth: %s not defined (userpasswd/proxycacert)' % self.__auth)
   
@@ -212,7 +199,7 @@ class NovaConfiguration( EndpointConfiguration ):
   """
 
   # Keys that MUST be present on ANY Nova CloudEndpoint configuration in the CS
-  MANDATORY_KEYS = [ 'ex_force_auth_url', 'ex_force_service_region', 'ex_tenant_name', 'vmPolicy', 'vmStopPolicy', 'vmUsage', 'cloudDriver', 'siteName', 'maxEndpointInstances' ]
+  MANDATORY_KEYS = [ 'ex_force_auth_url', 'ex_force_service_region', 'ex_tenant_name', 'vmPolicy', 'vmStopPolicy', 'cloudDriver', 'siteName', 'maxEndpointInstances', 'maxOportunisticEndpointInstances' ]
     
   def __init__( self, novaEndpoint ):
     """
@@ -241,10 +228,9 @@ class NovaConfiguration( EndpointConfiguration ):
     self.__cloudDriver             = novaOptions.get( 'cloudDriver'            , None )
     self.__vmStopPolicy            = novaOptions.get( 'vmStopPolicy'           , None )
     self.__vmPolicy                = novaOptions.get( 'vmPolicy'               , None )
-    self.__vmUsage                 = novaOptions.get( 'vmUsage'                , None )
-    self.__oportunisticThreshold   = novaOptions.get( 'oportunisticThreshold'   , None )
     self.__siteName                = novaOptions.get( 'siteName'               , None )
     self.__maxEndpointInstances    = novaOptions.get( 'maxEndpointInstances'   , None )
+    self.__maxOportunisticEndpointInstances    = novaOptions.get( 'maxOportunisticEndpointInstances'   , None )
     
     self.__ex_force_ca_cert        = novaOptions.get( 'ex_force_ca_cert'       , None )
     self.__ex_force_auth_token     = novaOptions.get( 'ex_force_auth_token'    , None )
@@ -266,10 +252,9 @@ class NovaConfiguration( EndpointConfiguration ):
     config[ 'cloudDriver' ]             = self.__cloudDriver
     config[ 'vmPolicy' ]                = self.__vmPolicy
     config[ 'vmStopPolicy' ]            = self.__vmStopPolicy
-    config[ 'vmUsage' ]                 = self.__vmUsage
-    config[ 'oportunisticThreshold' ]   = self.__oportunisticThreshold
     config[ 'siteName' ]                = self.__siteName
     config[ 'maxEndpointInstances' ]    = self.__maxEndpointInstances
+    config[ 'maxOportunisticEndpointInstances' ]    = self.__maxOportunisticEndpointInstances
 
     config[ 'ex_force_ca_cert' ]        = self.__ex_force_ca_cert 
     config[ 'ex_force_auth_token' ]     = self.__ex_force_auth_token
@@ -303,13 +288,6 @@ class NovaConfiguration( EndpointConfiguration ):
       return S_ERROR( 'User is None' )
     if self.__password is None:
       return S_ERROR( 'Password is None' )
-    
-    # depending on vmUsage value additional mandatory key should be considered:
-    if self.__vmUsage == 'oportunistic':
-      if self.__oportunisticThreshold is None:
-        return S_ERROR( 'oportunisticThreshold is None' )
-    if self.__vmUsage != 'credit':
-        return S_ERROR( 'vmUsage %s not defined (credit/oportunistic)' % self.__vmUsage)
     
     self.log.info( '*' * 50 )
     self.log.info( 'Displaying endpoint info' )
