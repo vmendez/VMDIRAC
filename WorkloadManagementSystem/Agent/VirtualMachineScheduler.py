@@ -167,6 +167,7 @@ class VirtualMachineScheduler( AgentModule ):
         else
           self.log.info( 'RunningPod %s is Unactive, do nothing' % ( runningPodName ) )
           continue
+        oportunisticRunningPod = False
         result = virtualMachineDB.checkRunningPodCredit(runningPodName)
         if not result['OK']:
           self.log.error( 'Error in checkRunningPodCredit %s: %s' % ( runningPodName, result['Message'] ) )
@@ -174,8 +175,8 @@ class VirtualMachineScheduler( AgentModule ):
         if result[ 'Value' ]:
           self.log.info( 'RunningPod %s has credit' % ( runningPodName ) )
         else
-          self.log.info( 'RunningPod %s has no more credit, do nothing' % ( runningPodName ) )
-          continue
+          self.log.info( 'RunningPod %s has no more credit, running oportunistic' % ( runningPodName ) )
+          oportunisticRunningPod = True
  
         runningPodDict = directorDict['director'].runningPods[runningPodName]
         imageName = runningPodDict['Image']
@@ -213,6 +214,12 @@ class VirtualMachineScheduler( AgentModule ):
             continue
           self.log.info( 'CS CloudEndpoint %s maxEndpointInstance: %s' % (endpoint,strMaxEndpointInstances) )
 
+          strMaxOportunisticEndpointInstances = gConfig.getValue( "/Resources/VirtualMachines/CloudEndpoints/%s/%s" % ( endpoint, 'maxOportunisticEndpointInstances' ), "" )
+          if not strMaxOportunisticEndpointInstances:
+            self.log.info( 'CS CloudEndpoint %s has no define maxOportunisticEndpointInstances option' % endpoint )
+            continue
+          self.log.info( 'CS CloudEndpoint %s maxEndpointInstance: %s' % (endpoint,strMaxOportunisticEndpointInstances) )
+
           vmPolicy = gConfig.getValue( "/Resources/VirtualMachines/CloudEndpoints/%s/%s" % ( endpoint, 'vmPolicy' ), "" )
           if not vmPolicy:
             self.log.info( 'CS CloudEndpoint %s has no define vmPolicy option' % endpoint )
@@ -232,8 +239,14 @@ class VirtualMachineScheduler( AgentModule ):
           result = virtualMachineDB.getInstancesByStatusAndEndpoint( 'Contextualizing', endpoint )
           if result['OK'] and imageName in result['Value']:
             endpointInstances += len( result['Value'][imageName] )
-          self.log.info( 'CS CloudEndpoint %s instances: %s, maxEndpointInstances: %s' % (endpoint,endpointInstances,strMaxEndpointInstances) )
-          maxEndpointInstances = int(strMaxEndpointInstances)
+
+          if oportunisticRunningPod:
+            self.log.info( 'CS CloudEndpoint %s instances: %s, maxOportunisticEndpointInstances: %s' % (endpoint,endpointInstances,strMaxOportunisticEndpointInstances) )
+            maxEndpointInstances = int(strMaxOportunisticEndpointInstances)
+          else:
+            self.log.info( 'CS CloudEndpoint %s instances: %s, maxEndpointInstances: %s' % (endpoint,endpointInstances,strMaxEndpointInstances) )
+            maxEndpointInstances = int(strMaxEndpointInstances)
+
           if endpointInstances < maxEndpointInstances:
             if vmPolicy == 'elastic':
               numVMs = 1
