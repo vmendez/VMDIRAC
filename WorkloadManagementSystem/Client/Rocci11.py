@@ -81,7 +81,7 @@ class Request:
 
 class OcciClient:
   
-  def __init__(  self, userCredPath, proxyCaPath, endpointConfig, imageConfig):
+  def __init__(  self, userCredPath, endpointConfig, imageConfig):
     """
     Constructor: uses user / secret authentication for the time being. 
     copy the endpointConfig and ImageConfig dictionaries to the OcciClient
@@ -104,7 +104,6 @@ class OcciClient:
     self.endpointConfig   = endpointConfig
     self.imageConfig      = imageConfig
     self.__userCredPath   = userCredPath
-    self.__proxyCaPath    = proxyCaPath
 
   def check_connection(self, timelife = 10):
     """
