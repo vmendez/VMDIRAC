@@ -69,7 +69,7 @@ class OcciImage:
     if auth == 'userpasswd':
       user = u
       secret = p
-    elif auth == 'proxycacert':
+    elif auth == 'proxy':
       userCredPath = u
     else:
       self.__errorStatus = "auth not supported" 
@@ -94,7 +94,7 @@ class OcciImage:
         self.log.error( self.__errorStatus )
         return S_ERROR( self.__errorStatus )
     elif self.__occiConfig.cloudDriver() == 'rocci-1.1':
-      if auth == 'proxycacert':
+      if auth == 'proxy':
         from VMDIRAC.WorkloadManagementSystem.Client.Rocci11 import OcciClient
         self.__cliocci = OcciClient(userCredPath, self.__occiConfig.config(), self.__imageConfig.config())
       else:
