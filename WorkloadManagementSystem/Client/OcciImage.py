@@ -72,7 +72,7 @@ class OcciImage:
     elif auth == 'proxy':
       userCredPath = u
     else:
-      self.__errorStatus = "auth not supported" 
+      self.__errorStatus = "auth not supported (userpasswd/proxy)" 
       self.log.error( self.__errorStatus )
       return
 
@@ -117,7 +117,7 @@ class OcciImage:
 
     return S_OK( request.stdout )
 
-  def startNewInstance( self, cpuTime ):
+  def startNewInstance( self, cpuTime, submitPool="Cloud" ):
     """
     Prior to use, virtual machine images are uploaded to the OCCI cloud manager assigned an id (OII in a URI). 
     """
@@ -125,7 +125,7 @@ class OcciImage:
       return S_ERROR( self.__errorStatus )
 
     self.log.info( "Starting new instance for DIRAC image: %s; to endpoint %s" % ( self.imageName, self.endPoint) )
-    request = self.__cliocci.create_VMInstance(cpuTime)
+    request = self.__cliocci.create_VMInstance(cpuTime,submitPool)
     if request.returncode != 0:
       self.__errorStatus = "Can't create instance for DIRAC image: %s; to endpoint %s" % ( self.imageName, self.endPoint) 
       self.log.error( self.__errorStatus )
@@ -174,7 +174,7 @@ class OcciImage:
 
     return S_OK( request.stdout )
 
-  def contextualizeInstance( self, uniqueId, public_ip, cpuTime ):
+  def contextualizeInstance( self, uniqueId, public_ip, cpuTime, submitPool ):
     """
     This method is not a regular method in the sense that is not generic at all.
     It will be called only of those VMs which need after-booting contextualisation,
@@ -193,7 +193,7 @@ class OcciImage:
     :return: S_OK | S_ERROR
     """
 
-    return self.__cliocci.contextualize_VMInstance( uniqueId, public_ip, cpuTime )
+    return self.__cliocci.contextualize_VMInstance( uniqueId, public_ip, cpuTime, submitPool )
 
 #...............................................................................
 #EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF

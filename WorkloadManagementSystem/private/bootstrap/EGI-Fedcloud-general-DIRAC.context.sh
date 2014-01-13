@@ -67,7 +67,7 @@ echo "11 $cloudDriver" >> /var/log/dirac-context-script.log 2>&1
 	cd /opt/dirac
 	wget --no-check-certificate -O dirac-install 'https://github.com/DIRACGrid/DIRAC/raw/integration/Core/scripts/dirac-install.py' >> /var/log/dirac-context-script.log 2>&1
 
-	su dirac -c'python dirac-install -V "VMDIRAC"' >> /var/log/dirac-context-script.log 2>&1
+	su dirac -c'python dirac-install -V "VMEGI"' >> /var/log/dirac-context-script.log 2>&1
 
 	# FOR DEBUGGIN PURPOSES overwriting with last released in the local vmendez git folder: 
         rm -rf VMDIRAC
@@ -93,7 +93,7 @@ echo "11 $cloudDriver" >> /var/log/dirac-context-script.log 2>&1
         # if CAs are not download we retry
         for retry in 0 1 2 3 4 5 6 7 8 9
         do
-		su dirac -c"dirac-configure -UHddd -o /LocalSite/SubmitPool=$submitPool -o /LocalSite/CPUTime=$cpuTime -o /LocalSite/CloudDriver=$cloudDriver -o /LocalSite/Site=$siteName  -o /LocalSite/VMStopPolicy=$vmStopPolicy  -o /LocalSite/CE=CE-nouse defaults-VMDIRAC.cfg"  >> /var/log/dirac-context-script.log 2>&1
+		su dirac -c"dirac-configure -UHddd -o /LocalSite/SubmitPool=$submitPool -o /LocalSite/CPUTime=$cpuTime -o /LocalSite/CloudDriver=$cloudDriver -o /LocalSite/Site=$siteName  -o /LocalSite/VMStopPolicy=$vmStopPolicy  -o /LocalSite/CE=CE-nouse defaults-VMEGI.cfg"  >> /var/log/dirac-context-script.log 2>&1
 		# options H: SkipCAChecks, dd: debug level 2, U: UseServerCertificate 
 		# options only for debuging D: SkipCADownload
 		# after UseServerCertificate = yes for the configuration with CS

@@ -87,10 +87,8 @@ class OcciClient:
     copy the endpointConfig and ImageConfig dictionaries to the OcciClient
 
     :Parameters:
-      **user** - `string`
-        username that will be used on the authentication
-      **secret** - `string`
-        password used on the authentication
+      **userCredPath** - `string`
+        path to a valid x509 proxy
       **endpointConfig** - `dict`
         dictionary with the endpoint configuration ( WMS.Utilities.Configuration.OcciConfiguration )
       **imageConfig** - `dict`
@@ -112,17 +110,18 @@ class OcciClient:
     """
 
     request = Request()
-    command = 'occi --endpoint ' + self.endpointConfig['occiURI'] + ' --action list --resource compute --auth x509 --user-cred ' + self.__userCredPath  + ' --voms'
+    command = 'occi --endpoint ' + self.endpointConfig['occiURI'] + ' --action list --resource compute --auth x509 --user-cred ' + self.__userCredPath + ' --voms' 
     request.exec_and_wait(command, timelife)
     return request
    
-  def create_VMInstance(self, cpuTime):
+  def create_VMInstance(self, cpuTime, submitPool='Cloud'):
     """
     This creates a VM instance for the given boot image 
     if context method is adhoc then boot image is create to be in Submitted status
     if context method is ssh then boot image is created to be in Wait_ssh_context (for contextualization agent)
     if context method is occi_opennebula context is in hdc image, and also de OCCI context on-the-fly image, taken the given parameters
     Successful creation returns instance id  and the IP
+    BTM: submitPool is not used, since rOCCI only has ssh contextualization, then used at this point. It is here by compatibility with OCCI 0.8 call
     """
 
     # TODO: cpuTime is here to implement HEPiX when ready with rOCCI
@@ -145,7 +144,7 @@ class OcciClient:
 
     request = Request()
 
-    command = 'occi --endpoint ' + occiURI + '  --action create --resource compute --mixin os_tpl#' + osTemplateName + ' --mixin resource_tpl#' + flavorName + ' --attributes title="' + vmName + '" --output-format json --auth x509 --user-cred ' + self.__userCredPath + ' --voms ' 
+    command = 'occi --endpoint ' + occiURI + '  --action create --resource compute --mixin os_tpl#' + osTemplateName + ' --mixin resource_tpl#' + flavorName + ' --attributes title="' + vmName + '" --output-format json --auth x509 --user-cred ' + self.__userCredPath + ' --voms' 
 
     request.exec_no_wait(command)
 
@@ -167,8 +166,7 @@ class OcciClient:
     # giving time sleep to REST API caching the instance to be available:
     time.sleep( 5 )
 
-
-    command = 'occi --endpoint ' + occiURI + '  --action describe --resource /compute/' + iD + ' --output-format json --auth x509 --user-cred ' + self.__userCredPath + ' --voms '
+    command = 'occi --endpoint ' + occiURI + '  --action describe --resource /compute/' + iD + ' --output-format json --auth x509 --user-cred ' + self.__userCredPath + ' --voms ' 
 
     request.exec_no_wait(command)
 
@@ -188,6 +186,7 @@ class OcciClient:
     """
     Terminate a VM instance corresponding to the instanceId parameter
     """
+    occiURI  = self.endpointConfig[ 'occiURI' ]
     request = Request()
     command = 'occi --endpoint ' + occiURI + '  --action delete --resource /compute/' + instanceId + ' --output-format json --auth x509 --user-cred ' + self.__userCredPath + ' --voms ' 
 
@@ -227,7 +226,7 @@ class OcciClient:
     request.stdout = request.stdout[first:last]
     return request
 
-  def contextualize_VMInstance( self, uniqueId, publicIp, cpuTime ):
+  def contextualize_VMInstance( self, uniqueId, publicIp, cpuTime, submitPool ):
     """
     This method is only used ( at the moment ) by the ssh contextualization method.
     It is called once the vm has been booted.
@@ -246,7 +245,8 @@ class OcciClient:
     return sshContext.contextualise(  self.imageConfig, self.endpointConfig,
                                       uniqueId = uniqueId,
                                       publicIp = publicIp,
-                                      cpuTime = cpuTime )
+                                      cpuTime = cpuTime,
+                                      submitPool = submitPool )
 
 #...............................................................................
 #EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF#EOF
