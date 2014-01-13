@@ -45,7 +45,7 @@ class VirtualMachineDB( DB ):
   validImageStates    = [ 'New', 'Validated', 'Error' ]
   validInstanceStates = [ 'New', 'Submitted', 'Wait_ssh_context', 'Contextualizing', 
                           'Running', 'Stopping', 'Halted', 'Stalled', 'Error' ]
-  validRunningPodStates    = [ 'Active', 'Unactive' ]
+  validRunningPodStates    = [ 'New', 'Unactive', 'Active', 'Error' ]
 
   # In seconds !
   stallingInterval = 30 * 60 
@@ -63,7 +63,11 @@ class VirtualMachineDB( DB ):
                                        'Halted' : [ 'New','Running', 'Stopping', 'Stalled' ],
                                        'Stalled': [ 'New', 'Submitted', 'Wait_ssh_context', 
                                                     'Contextualizing', 'Running' ],
-                                      }
+                                      },
+                        'RunningPod' : {
+                                       'Active' : [ 'New', 'Active', 'Unactive' ],
+                                       'Unactive' : [ 'New', 'Active', 'Unactive' ],
+                                   }
                        }
 
   tablesDesc = {}
@@ -118,8 +122,10 @@ class VirtualMachineDB( DB ):
                                               'CampaignVcpuHoursCredit' : 'FLOAT NOT NULL',
                                               'UsedVcpuHours' : 'FLOAT NOT NULL',
                                               'CampaignStartDate' : 'DATETIME',
-                                              'CampaignEndDate' : 'DATETIME'
+                                              'CampaignEndDate' : 'DATETIME',
                                               'Status' : 'VARCHAR(32) NOT NULL',
+                                              'LastUpdate' : 'DATETIME',
+                                              'ErrorMessage' : 'VARCHAR(255) NOT NULL DEFAULT ""'
                                             },
                                    'PrimaryKey' : 'RunningPodID',
                                    'Indexes': { 'RunningPod': [ 'RunningPod', 'Status' ]
@@ -156,9 +162,9 @@ class VirtualMachineDB( DB ):
     runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
-    runningPodID = runningPodID[ 'Value' ]
+    runningPodID = runningPodID[ 'Value' ][0][0]
 
-    if len( runningPodID ) < 1:
+    if not runningPodID:
       return S_ERROR( 'Running pod %s not found in DB' % runningPodName )
 
     # The runningPod exits in DB set status
@@ -168,13 +174,13 @@ class VirtualMachineDB( DB ):
       return runningPodDict
 
     runningPodDict = runningPodDict[ 'Value' ]
-    runningPodGovernaceDict = runningPodDict[ 'Governance' ]
+    runningPodGovernanceDict = runningPodDict[ 'Governance' ]
     startdate=Time.fromString(runningPodGovernanceDict['campaignStartDate'])
     enddate=Time.fromString(runningPodGovernanceDict['campaignEndDate'])
     currentdate=Time.date()
-    if dcurrent<startdate:
+    if currentdate<startdate:
       runningPodState='Unactive'
-    elfi dcurrent>enddate:
+    elif currentdate>enddate:
       runningPodState='Unactive'
     else:
       runningPodState='Active'
@@ -193,9 +199,9 @@ class VirtualMachineDB( DB ):
     runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
-    runningPodID = runningPodID[ 'Value' ]
+    runningPodID = runningPodID[ 'Value' ][0][0]
 
-    if len( runningPodID ) < 1:
+    if not runningPodID:
       return S_ERROR( 'Running pod %s not found in DB' % runningPodName )
 
     # The runningPod exits in DB set status
@@ -715,8 +721,8 @@ class VirtualMachineDB( DB ):
 
     runningPodGovernanceDict = runningPodDict['Governance']
 
-    fields = [ 'RunningPod', 'CampaignVcpuHoursCredit', 'UsedVcpuHours','CampaignStartDate', 'CampaignEndDate']
-    values = [ runningPodName, runningPodGovernanceDict['campaignVcpuHoursCredit'], 0, runningPodGovernanceDict['campaignStartDate'], runningPodGovernanceDict['campaignEndDate']]
+    fields = [ 'RunningPod', 'CampaignVcpuHoursCredit', 'UsedVcpuHours','CampaignStartDate', 'CampaignEndDate', 'Status']
+    values = [ runningPodName, runningPodGovernanceDict['campaignVcpuHoursCredit'], 0, runningPodGovernanceDict['campaignStartDate'], runningPodGovernanceDict['campaignEndDate'], 'New']
 
     # Status field is set and get from VMScheduler dynamically.
 
@@ -733,9 +739,9 @@ class VirtualMachineDB( DB ):
     runningPodID = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ runningPodName ] )
     if not runningPodID[ 'OK' ]:
       return runningPodID
-    runningPodID = runningPodID[ 'Value' ]
+    runningPodID = runningPodID[ 'Value' ][0][0]
 
-    if len( runningPodID ) == 0:
+    if not runningPodID:
       return S_ERROR( 'RunningPod name "%s" is not in DB' % runningPodName )
 
     runningPodDBRecord = self.__getInfo( 'RunningPod', runningPodID )
@@ -1216,6 +1222,7 @@ class VirtualMachineDB( DB ):
       return currentState
     currentState = currentState[ 'Value' ]
 
+
     if not currentState in allowedStates:
       msg = 'Transition ( %s -> %s ) not allowed' % ( currentState, state )
       return S_ERROR( msg )
@@ -1371,7 +1378,7 @@ class VirtualMachineDB( DB ):
     self._update( sqlUpdate )
     return S_OK()
 
-  def __setUsedVcpuHours( self, instanceID, vcpus)
+  def __setUsedVcpuHours( self, instanceID, vcpus):
     sqlQuery = "SELECT COUNT(*) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID" % instanceID
     result = self._query( sqlQuery )
     if not result[ 'OK' ]:
@@ -1441,7 +1448,7 @@ class VirtualMachineDB( DB ):
 
   def __getStatus( self, element, iD ):
     """
-    Check and return status of Images and Instances by ID
+    Check and return status of Images, Instances and RunningPod by ID
     returns:
       S_OK(Status) if Status is valid and not Error 
       S_ERROR(ErrorMessage) otherwise
@@ -1462,7 +1469,7 @@ class VirtualMachineDB( DB ):
       return self.__setError( element, iD, 'Invalid Status: %s' % status )
     if status == validStates[ -1 ]:
       return S_ERROR( msg )
-
+    
     return S_OK( status )
 
   def __setError( self, element, iD, reason ):

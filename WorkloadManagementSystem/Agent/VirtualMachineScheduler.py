@@ -164,7 +164,7 @@ class VirtualMachineScheduler( AgentModule ):
         status = result[ 'Value' ]
         if status == 'Active':
           self.log.info( 'RunningPod %s is Active' % ( runningPodName ) )
-        else
+        else:
           self.log.info( 'RunningPod %s is Unactive, do nothing' % ( runningPodName ) )
           continue
         oportunisticRunningPod = False
@@ -174,12 +174,12 @@ class VirtualMachineScheduler( AgentModule ):
           continue
         if result[ 'Value' ]:
           self.log.info( 'RunningPod %s has credit' % ( runningPodName ) )
-        else
+        else:
           self.log.info( 'RunningPod %s has no more credit, running oportunistic' % ( runningPodName ) )
           oportunisticRunningPod = True
  
         runningPodDict = directorDict['director'].runningPods[runningPodName]
-        runningPodGovernanceDict = runningPodDict['Governance']
+        runningPodGovernanceDict = runningPodDict['GovernanceDict']
         imageName = runningPodDict['Image']
         instances = 0
         result = virtualMachineDB.getInstancesByStatus( 'Running' )

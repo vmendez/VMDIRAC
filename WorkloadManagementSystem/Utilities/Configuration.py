@@ -178,7 +178,7 @@ class OcciConfiguration( EndpointConfiguration ):
     if self.__auth == 'userpasswd':
       return ( self.__auth, self.__user, self.__password )
     elif self.__auth == 'proxy':
-      return ( self.__auth, self.__userCredPath, none )
+      return ( self.__auth, self.__userCredPath, None )
     else:
       return S_ERROR( 'endpoint auth: %s not defined (userpasswd/proxy)' % self.__auth)
   
