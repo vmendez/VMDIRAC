@@ -131,8 +131,7 @@ class VirtualMachineManagerHandler( RequestHandler ):
 
 
   types_instanceIDHeartBeat = [ StringType, FloatType, ( IntType, LongType ),
-                               ( IntType, LongType ), ( IntType, LongType ), 
-                               ( IntType, LongType ), IntType ]
+                               ( IntType, LongType ), ( IntType, LongType ) ]
   def export_instanceIDHeartBeat( self, uniqueID, load, jobs,
                                   transferredFiles, transferredBytes, 
                                   uptime = 0, vcpus=1 ):
