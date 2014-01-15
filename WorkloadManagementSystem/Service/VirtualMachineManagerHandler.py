@@ -204,7 +204,7 @@ class VirtualMachineManagerHandler( RequestHandler ):
     return result
 
   types_declareInstanceHalting = [ StringType, FloatType ]
-  def export_declareInstanceHalting( self, uniqueID, load, cloudDriver ):
+  def export_declareInstanceHalting( self, uniqueID, load, cloudDriver, vcpus=1 ):
     """
     Insert the heart beat info from a halting instance
     The VM has the uniqueID, which is the Cloud manager VM id
@@ -220,7 +220,7 @@ class VirtualMachineManagerHandler( RequestHandler ):
       return endpoint
     endpoint = endpoint[ 'Value' ]
 
-    result = gVirtualMachineDB.declareInstanceHalting( uniqueID, load )
+    result = gVirtualMachineDB.declareInstanceHalting( uniqueID, load, vcpus )
     if not result[ 'OK' ]:
       self.__logResult( 'declareInstanceHalting on change status: ', result )
       return result

@@ -406,9 +406,10 @@ class VirtualMachineDB( DB ):
 
     return status
 
-  def declareInstanceHalting( self, uniqueID, load ):
+  def declareInstanceHalting( self, uniqueID, load, vcpus ):
     """
     Insert the heart beat info from a halting instance
+    Set RunningPod DB UsedVcpuHours
     Declares "Halted" the instance and the image 
     It returns S_ERROR if the status is not OK
     """
@@ -416,6 +417,10 @@ class VirtualMachineDB( DB ):
     if not instanceID[ 'OK' ]:
       return instanceID
     instanceID = instanceID[ 'Value' ]
+
+    result = self.__setUsedVcpuHours( instanceID, vcpus)
+    if not result[ 'OK' ]:
+      self.log.error( 'Trying to setUsedVcpuHours: "%s"' % result )
 
     status = self.__setState( 'Instance', instanceID, 'Halted' )
     if status[ 'OK' ]:
@@ -475,8 +480,6 @@ class VirtualMachineDB( DB ):
       return result
     status = status[ 'Value' ] 
 
-    print "status"
-    print status
     if status == 'Running' or status == 'Stopping':
       result = self.__setUsedVcpuHours( instanceID, vcpus)
       if not result[ 'OK' ]:
@@ -1437,19 +1440,11 @@ class VirtualMachineDB( DB ):
     raws = int( result[ 'Value' ][0][0] )
     limit = raws - 1
 
-    print "limit"
-    print limit
-
     sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d LIMIT %d,1" % ( instanceID, limit )
     result = self._query( sqlQuery )
-    print "result"
-    print result
     if not result[ 'OK' ]:
       return result
     timestampLast = long( result[ 'Value' ][0][0] )
-
-    print "timestampLast"
-    print timestampLast
 
     limit = limit - 1
     sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d LIMIT %d,1" % ( instanceID, limit )
@@ -1458,42 +1453,29 @@ class VirtualMachineDB( DB ):
       return result
     timestampPrevLast = long( result[ 'Value' ][0][0] )
 
-    print "timestampPrevLast"
-    print timestampPrevLast
-
-    hoursGap = float( (timestampLast - timestampPrevLast ) / 3600 )
+    fseconds = float( timestampLast - timestampPrevLast ) 
+    hoursGap = fseconds / 3600 
     gapUsedVcpuHours = hoursGap * vcpus
 
-    print "gapUsedVcpuHours"
-    print gapUsedVcpuHours
-
-    tableName, validStates, idName = self.__getTypeTuple( 'Instances' )
+    tableName, validStates, idName = self.__getTypeTuple( 'Instance' )
    
-    runningPodName = self._getFields( tableName, [ idName ], [ 'RunningPod' ], [ instanceID ] )
+    runningPodName = self._getFields( tableName, [ 'RunningPod' ], [ 'InstanceID' ], [ instanceID ] )
     if not runningPodName[ 'OK' ]:
       return runningPodName
-    runningPodName = runningPodName[ 'Value' ]
-
-    print "updating RunningPod"
-    print runningPodName
+    runningPodName = runningPodName[ 'Value' ][0][0]
 
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
    
-    usedVcpuHours = self._getFields( tableName, [ 'RunningPod' ], [ 'UsedVcpuHours' ], [ runningPodName ] )
+    usedVcpuHours = self._getFields( tableName, [ 'UsedVcpuHours' ], [ 'RunningPod' ], [ runningPodName ] )
     if not usedVcpuHours[ 'OK' ]:
       return usedVcpuHours
-    usedVcpuHours = float(usedVcpuHours[ 'Value' ])
-
-    print "Previous usedVcpuHours"
-    print usedVcpuHours
+    usedVcpuHours = float(usedVcpuHours[ 'Value' ][0][0])
 
     usedVcpuHours = usedVcpuHours + gapUsedVcpuHours
 
-    print "Updated usedVcpuHours"
-    print usedVcpuHours
-
-    sqlUpdate = "UPDATE `vm_Instances` SET `UsedVcpuHours` = %f WHERE `InstanceID` = %d" % ( usedVcpuHours, instanceID )
+    sqlUpdate = "UPDATE `vm_RunningPod` SET `UsedVcpuHours` = %f WHERE `RunningPod` = '%s'" % ( usedVcpuHours, runningPodName )
     self._update( sqlUpdate )
+    self.log.info( 'setUsedVcpuHours: %f, in RunningPod "%s"' % (usedVcpuHours, runningPodName ) )
     return S_OK()
 
   def __getInfo( self, element, iD ):
