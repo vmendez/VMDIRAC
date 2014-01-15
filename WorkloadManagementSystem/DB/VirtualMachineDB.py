@@ -464,13 +464,20 @@ class VirtualMachineDB( DB ):
       return instanceID
     instanceID = instanceID[ 'Value' ]
 
-    status = self.__runningInstance( instanceID, load, jobs, transferredFiles, transferredBytes )
-    if not status[ 'OK' ]:
-      return status
+    result = self.__runningInstance( instanceID, load, jobs, transferredFiles, transferredBytes )
+    if not result[ 'OK' ]:
+      return result
 
     self.__setLastLoadJobsAndUptime( instanceID, load, jobs, uptime )
+    
+    status = self.__getStatus( 'Instance', instanceID )
+    if not status[ 'OK' ]:
+      return result
+    status = status[ 'Value' ] 
 
-    if status == 'Running':
+    print "status"
+    print status
+    if status == 'Running' or status == 'Stopping':
       result = self.__setUsedVcpuHours( instanceID, vcpus)
       if not result[ 'OK' ]:
         self.log.error( 'Trying to setUsedVcpuHours: "%s"' % result )
@@ -1423,28 +1430,42 @@ class VirtualMachineDB( DB ):
     return S_OK()
 
   def __setUsedVcpuHours( self, instanceID, vcpus):
-    sqlQuery = "SELECT COUNT(*) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID" % instanceID
+    sqlQuery = "SELECT COUNT(*) FROM `vm_History` WHERE InstanceID = %d " % instanceID
     result = self._query( sqlQuery )
     if not result[ 'OK' ]:
       return result
     raws = int( result[ 'Value' ][0][0] )
     limit = raws - 1
 
-    sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID LIMIT %d,1" % ( instanceID, limit )
+    print "limit"
+    print limit
+
+    sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d LIMIT %d,1" % ( instanceID, limit )
     result = self._query( sqlQuery )
+    print "result"
+    print result
     if not result[ 'OK' ]:
       return result
     timestampLast = long( result[ 'Value' ][0][0] )
 
+    print "timestampLast"
+    print timestampLast
+
     limit = limit - 1
-    sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d GROUP BY InstanceID LIMIT %d,1" % ( instanceID, limit )
+    sqlQuery = "SELECT UNIX_TIMESTAMP( `Update` ) FROM `vm_History` WHERE InstanceID = %d LIMIT %d,1" % ( instanceID, limit )
     result = self._query( sqlQuery )
     if not result[ 'OK' ]:
       return result
     timestampPrevLast = long( result[ 'Value' ][0][0] )
 
-    hoursGap = float( timestampLast - timestampPrevLast ) / 3600
-    gapUsedVcpuHous = hoursGap * vcpus
+    print "timestampPrevLast"
+    print timestampPrevLast
+
+    hoursGap = float( (timestampLast - timestampPrevLast ) / 3600 )
+    gapUsedVcpuHours = hoursGap * vcpus
+
+    print "gapUsedVcpuHours"
+    print gapUsedVcpuHours
 
     tableName, validStates, idName = self.__getTypeTuple( 'Instances' )
    
@@ -1453,6 +1474,9 @@ class VirtualMachineDB( DB ):
       return runningPodName
     runningPodName = runningPodName[ 'Value' ]
 
+    print "updating RunningPod"
+    print runningPodName
+
     tableName, validStates, idName = self.__getTypeTuple( 'RunningPod' )
    
     usedVcpuHours = self._getFields( tableName, [ 'RunningPod' ], [ 'UsedVcpuHours' ], [ runningPodName ] )
@@ -1460,7 +1484,13 @@ class VirtualMachineDB( DB ):
       return usedVcpuHours
     usedVcpuHours = float(usedVcpuHours[ 'Value' ])
 
+    print "Previous usedVcpuHours"
+    print usedVcpuHours
+
     usedVcpuHours = usedVcpuHours + gapUsedVcpuHours
+
+    print "Updated usedVcpuHours"
+    print usedVcpuHours
 
     sqlUpdate = "UPDATE `vm_Instances` SET `UsedVcpuHours` = %f WHERE `InstanceID` = %d" % ( usedVcpuHours, instanceID )
     self._update( sqlUpdate )
