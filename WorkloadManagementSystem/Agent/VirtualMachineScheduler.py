@@ -281,7 +281,8 @@ class VirtualMachineScheduler( AgentModule ):
           self.log.info( 'No matching jobs for %s found, skipping' % imageName )
           continue
 
-        if instances and ( cpu / instances ) < runningPodGovernanceDict['CPUPerInstance']:
+        cpuPerInstance = int(runningPodGovernanceDict['CPUPerInstance'])
+        if instances and ( cpu / instances ) < cpuPerInstance:
           self.log.info( 'Waiting CPU per Running instance %s < %s, skipping' % ( cpu / instances, runningPodGovernanceDict['CPUPerInstance'] ) )
           continue
 
