@@ -219,7 +219,7 @@ class VirtualMachineScheduler( AgentModule ):
           if not strMaxOportunisticEndpointInstances:
             self.log.info( 'CS CloudEndpoint %s has no define maxOportunisticEndpointInstances option' % endpoint )
             continue
-          self.log.info( 'CS CloudEndpoint %s maxEndpointInstance: %s' % (endpoint,strMaxOportunisticEndpointInstances) )
+          self.log.info( 'CS CloudEndpoint %s maxOportunisticEndpointInstance: %s' % (endpoint,strMaxOportunisticEndpointInstances) )
 
           vmPolicy = gConfig.getValue( "/Resources/VirtualMachines/CloudEndpoints/%s/%s" % ( endpoint, 'vmPolicy' ), "" )
           if not vmPolicy:
