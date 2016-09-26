@@ -145,6 +145,8 @@ install_eiscat_software_stack >> /var/log/dirac-context-script.log 2>&1
 		chown root:root $i
 	done
 	cd /opt/dirac
+        # adapting to 1GB buffer in input data margin of free disk:
+        mv VMDIRAC/WorkloadManagementSystem/Client/DownloadInputData.py DIRAC/WorkloadManagementSystem/Client/DownloadInputData.py
 
         source bashrc >> /var/log/dirac-context-script.log 2>&1
         env >> /var/log/dirac-context-script.log 2>&1
